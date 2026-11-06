@@ -194,3 +194,25 @@ Check the main imports with the following command. The leader should substitute 
 Download the two dataset files into `data/raw/` as described above. The existing ignore rules exclude virtual environments and raw data from commits. Installation on other operating systems requires separate verification because some pinned dependencies are platform-specific.
 
 Application launch commands will be added when the backend and dashboard entry points are implemented.
+
+## Running preprocessing
+
+From the repository root, run the following using your selected Python environment:
+
+```powershell
+.\.venv\Scripts\python.exe preprocessing/prepare.py
+```
+
+For the leader's parent-folder environment, use `..\.venv\Scripts\python.exe preprocessing/prepare.py`.
+
+The command validates the training CSV and takes the first fold of a five-fold stratified group split with seed 42. Complete feature tuples define the groups. It retains repeated observations and conflicting labels while keeping each identical feature group within one partition. The fitted transformer standardizes numeric features and one-hot encodes categorical features. Unknown categories produce all-zero indicators. Numeric parsing and finiteness are validated; domain-specific range restrictions remain pending feature-definition review. Values such as `service = -` and `is_ftp_login = 2` are preserved.
+
+Generated files are stored locally in the Git-ignored `data/processed/` folder:
+
+- `train.csv` and `validation.csv` retain the original columns for auditing. Model inputs must be selected through `validate_features`.
+- `preprocessor.joblib` contains preprocessing fitted exclusively on the training partition.
+- `split_report.json` records feature names, split counts and group checks.
+
+The verified run produced 140,272 training rows (44,800 normal and 95,472 attack) and 35,069 validation rows (11,200 normal and 23,869 attack). There were zero shared feature groups between the partitions. The fitted transformer produced 193 columns. This run uses only the supplied training CSV. Re-running the command replaces the generated outputs.
+
+The saved transformer is for the next model-training phase. Final model packaging must keep the fitted preprocessing and classifier together. If cross-validation is introduced later, preprocessing must be fitted separately inside each training fold.
