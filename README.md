@@ -60,3 +60,35 @@ The categorical input fields are `proto`, `service` and `state`. Their values mu
 These prepared CSV files have no source-IP column. The simulated block list will therefore use clearly labelled demonstration identifiers, kept separate from the model inputs.
 
 Model selection will use a validation split created from the training file. The supplied test file is reserved for final evaluation. A documented policy for duplicates and overlap is required before training and evaluation proceed.
+
+## Preprocessing inspection and proposed approach
+
+The step 4 inspection compared the 42 input features after excluding `id`, `label` and `attack_cat`. CSV headers were read using UTF-8 with BOM handling. Numeric values were compared as numbers and categorical values were stripped of surrounding whitespace.
+
+All 39 numeric input columns could be parsed as finite, non-negative numbers in both files. This checks representation, rather than whether every value is valid for its documented meaning. In particular, `is_ftp_login` contains values 2 and 4 in training and 2 in testing. Their meaning requires confirmation before any conversion to a binary flag.
+
+| Check | Training | Testing |
+| --- | ---: | ---: |
+| Distinct `proto` values | 133 | 131 |
+| Distinct `service` values | 13 | 13 |
+| Distinct `state` values | 9 | 7 |
+| Records with `service` equal to `-` | 94,168 | 47,153 |
+| Distinct input-feature records | 101,040 | 53,946 |
+| Additional copies of input-feature records | 74,301 | 28,386 |
+| Feature groups containing both binary labels | 229 | 6 |
+| Feature groups containing multiple attack categories | 1,772 | 575 |
+
+The test set contains two state values absent from training: `ACC` (4 records) and `CLO` (1 record). The encoder must support previously unseen categories. The service value `-` should remain an explicit category until its meaning is confirmed from the feature documentation.
+
+There are 1,302 distinct input-feature records shared across the supplied partitions, covering 10,279 training rows and 8,541 testing rows. Of these shared groups, 279 contain both binary labels when the partitions are considered together. These counts differ from the earlier checks because labels are now excluded from the comparison. Conflicting labels mean that identical available inputs can have different recorded outcomes.
+
+### Proposed preprocessing decisions for review
+
+1. Preserve the raw CSVs and record transformations in a reproducible pipeline. Keep conflicting labels visible in the audit rather than automatically changing them.
+2. Create an approximately 80/20 training/validation split from the supplied training file, using a fixed random seed of 42. Group identical input-feature records together, including those with conflicting labels, and aim to preserve binary class proportions. Report actual partition sizes and class counts because grouping can prevent an exact split.
+3. Retain repeated observations for the initial benchmark, but report their frequency. Evaluate a deduplicated training variant separately if needed, with an explicit policy for conflicting labels.
+4. Fit categorical encoding on the training portion only and handle unknown categories. Fit numeric scaling on that portion for Logistic Regression. Keep the same input definitions for all candidate models.
+5. Select model settings and thresholds using validation data. Evaluate the final model on the official test set, reporting both full-set metrics and a separate subset excluding feature records present in the model's training data. Report subset sizes and class distributions, since exclusion changes the evaluation population.
+6. Confirm the documented meaning of `is_ftp_login` and service placeholders before changing those values. Check feature ranges against their definitions before treating unusual numeric values as errors.
+
+These are proposed decisions. No cleaned dataset, validation partition or trained model has been created by this inspection.
