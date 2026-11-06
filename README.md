@@ -22,3 +22,41 @@ The initial prototype uses dataset records rather than live network capture. The
 - A malicious prediction triggers an alert and a simulated block-list entry.
 - Model evaluation uses held-out test data excluded from training and tuning.
 - The complete workflow can be demonstrated repeatedly using prepared samples.
+
+## Dataset findings
+
+We selected UNSW-NB15 for the initial binary classification experiment. The local files are stored in `data/raw/`, which is excluded from Git. Each team member should download the same prepared training and testing files from the [official dataset page](https://research.unsw.edu.au/projects/unsw-nb15-dataset).
+
+The following results come from an initial inspection of our downloaded CSV files.
+
+| Check | `UNSW_NB15_training-set.csv` | `UNSW_NB15_testing-set.csv` |
+| --- | ---: | ---: |
+| Records | 175,341 | 82,332 |
+| Columns | 45 | 45 |
+| Normal records (`label = 0`) | 56,000 | 37,000 |
+| Attack records (`label = 1`) | 119,341 | 45,332 |
+| Empty or whitespace-only cells | 0 | 0 |
+| Repeated rows after excluding `id` | 67,601 | 26,387 |
+
+Both files have the same columns in the same order. They contain normal traffic and nine attack categories: Analysis, Backdoor, DoS, Exploits, Fuzzers, Generic, Reconnaissance, Shellcode and Worms.
+
+The repeated-row counts measure occurrences beyond the first copy of each row, comparing every column except `id`. There are also 940 distinct records shared between the training and testing files under that comparison, including the labels. These are preliminary overlap checks. Feature-only overlap and conflicting labels still need inspection before deciding how to handle duplicates during evaluation.
+
+The absence of empty cells does not establish that all values are valid. Numeric validity, infinite values and categorical placeholders still need checking. The raw files should be preserved so that cleaning decisions can be reproduced.
+
+## Prediction target and input features
+
+The first experiment will classify each record as normal or malicious.
+
+| Columns | Role |
+| --- | --- |
+| `label` | Prediction target: `0` represents normal traffic and `1` represents an attack. |
+| `attack_cat` | Retained for analysis by attack category and excluded from model inputs because it reveals the target class. |
+| `id` | Excluded from model inputs because it identifies the record. |
+| Remaining 42 columns | Candidate input features, subject to preprocessing checks. |
+
+The categorical input fields are `proto`, `service` and `state`. Their values must be inspected and encoded consistently during training and prediction. Any learned preprocessing will be fitted on the training portion only.
+
+These prepared CSV files have no source-IP column. The simulated block list will therefore use clearly labelled demonstration identifiers, kept separate from the model inputs.
+
+Model selection will use a validation split created from the training file. The supplied test file is reserved for final evaluation. A documented policy for duplicates and overlap is required before training and evaluation proceed.
