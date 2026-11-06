@@ -92,3 +92,77 @@ There are 1,302 distinct input-feature records shared across the supplied partit
 6. Confirm the documented meaning of `is_ftp_login` and service placeholders before changing those values. Check feature ranges against their definitions before treating unusual numeric values as errors.
 
 These are proposed decisions. No cleaned dataset, validation partition or trained model has been created by this inspection.
+
+## System design
+
+This design describes the planned first version of the prototype. It establishes the interfaces that team members will use when implementing their components.
+
+### Training and evaluation flow
+
+The training workflow reads the prepared training CSV, validates its fields and creates the grouped training/validation split described above. Preprocessing and each candidate classifier are fitted on the training portion. Validation results guide model selection. The selected preprocessing and classifier are saved together with the required feature names and their order. The evaluation component then measures the selected system on the reserved test data, including the overlap-aware results already specified.
+
+### Prediction flow
+
+```text
+CSV upload through dashboard
+    -> Backend validates columns and values
+    -> Saved pipeline transforms the 42 input features
+    -> Trained classifier predicts normal or malicious
+    -> Backend creates result records and simulated actions
+    -> Dashboard displays results, alerts and simulated block entries
+```
+
+### Component responsibilities
+
+| Folder | Responsibility | Output for other components |
+| --- | --- | --- |
+| `preprocessing/` | Define the input schema, validate data, create grouped splits and construct consistent preprocessing. | Shared validation logic and preprocessing used by training and prediction. |
+| `models/` | Train candidate classifiers, compare validation results and save the selected pipeline. | Saved preprocessing/classifier pipeline and ordered feature names. |
+| `backend/` | Receive uploaded CSVs, validate them, load the pipeline and construct predictions and simulated responses. | Structured per-record results and counts. |
+| `frontend/` | Provide CSV upload, display validation messages, show prediction totals and list alerts and simulated block entries. | A user-facing demonstration of the complete workflow. |
+| `evaluation/` | Calculate detection metrics, false positives, timing and overlap-aware test results. | Reproducible tables and figures for the report. |
+
+### Input agreement
+
+The upload must contain the 42 candidate feature columns identified in the dataset findings. Column order may vary in the file; the backend selects and orders features by their saved names. The three categorical fields are `proto`, `service` and `state`. The remaining 39 fields must contain finite numeric values. Domain-specific range rules will be confirmed against feature documentation during preprocessing implementation.
+
+The supplied dataset CSV format is also accepted. Its optional `id`, `label` and `attack_cat` columns are excluded from prediction inputs. Additional unexpected columns, duplicate column names, missing required columns, empty files and malformed values produce a clear validation message. An invalid upload is rejected as a whole before predictions or simulated actions are created. Unknown categorical values are handled by the fitted encoder using the policy established during training.
+
+### Backend and dashboard agreement
+
+The backend returns one result per input row in the original order. The first data row has row number 1. Each upload receives a unique identifier, which is combined with the row number to form a demonstration record identifier. This identifier is independent of any dataset `id` value and is excluded from the model inputs.
+
+| Result field | Meaning |
+| --- | --- |
+| `record_id` | Unique demonstration identifier for this upload and row. |
+| `row_number` | Position of the data row in the uploaded CSV, starting at 1. |
+| `predicted_label` | Integer `0` for normal or `1` for malicious. |
+| `prediction` | Display text `normal` or `malicious`, consistent with the predicted label. |
+| `simulated_action` | `allow` for normal or `block` for malicious. |
+
+An illustrative result for a malicious prediction is shown below. It is an interface example, not an experimental result.
+
+```json
+{
+  "record_id": "demo-upload-001-row-1",
+  "row_number": 1,
+  "predicted_label": 1,
+  "prediction": "malicious",
+  "simulated_action": "block"
+}
+```
+
+The response also contains total record, normal prediction and malicious prediction counts. The dashboard presents malicious predictions as alerts and lists their demonstration identifiers in the simulated block list. These entries represent a simulated response for each record; they do not identify or block real network hosts. The first version displays the results and block list for the current upload, replacing the previous display after another successful upload.
+
+### Integration checks
+
+- A CSV with valid required features produces exactly one result per row, in the original order.
+- Reordering input columns leaves predictions unchanged.
+- Optional ground-truth columns are excluded from prediction, and changing them leaves predictions unchanged.
+- Missing columns, duplicate headers and malformed numeric values produce readable validation errors before any simulated actions occur.
+- An unseen category is processed according to the fitted encoder policy.
+- A malicious prediction creates an alert and a simulated block entry with the same record identifier. A normal prediction receives an allow action.
+- Summary counts equal the number of returned results, and the interface clearly labels simulated actions.
+- A teammate can run the documented workflow using the saved pipeline and prepared demonstration data.
+
+The next phase will select and document the shared Python environment and dependencies before implementation begins.
