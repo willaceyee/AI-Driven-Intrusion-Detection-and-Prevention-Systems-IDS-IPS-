@@ -166,3 +166,31 @@ The response also contains total record, normal prediction and malicious predict
 - A teammate can run the documented workflow using the saved pipeline and prepared demonstration data.
 
 The next phase will select and document the shared Python environment and dependencies before implementation begins.
+
+## Shared development environment
+
+Use Python 3.12 for this project. The leader's existing environment uses Python 3.12.10. The initial stack uses pandas for data preparation, scikit-learn for preprocessing and models, joblib for saved pipelines, FastAPI and Uvicorn for the backend, Streamlit for the dashboard, requests for dashboard-to-backend communication, and Matplotlib for evaluation figures. The requirements file pins the installed packages and their dependencies for the tested Windows environment.
+
+### New teammate setup on Windows
+
+Open a terminal in the cloned repository folder, then run:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip check
+```
+
+In VS Code, run `Python: Select Interpreter` from the command palette and select the repository's `.venv/Scripts/python.exe`. Calling the environment's Python directly avoids needing to activate it in PowerShell.
+
+The leader can continue using the existing environment in the parent folder. From the repository root, its Python executable is `../.venv/Scripts/python.exe`. Teammates should use their own environment rather than copying this folder.
+
+Check the main imports with the following command. The leader should substitute the parent environment path when running it.
+
+```powershell
+.\.venv\Scripts\python.exe -c "import pandas, sklearn, joblib, fastapi, uvicorn, streamlit, requests, matplotlib; print('Environment imports passed')"
+```
+
+Download the two dataset files into `data/raw/` as described above. The existing ignore rules exclude virtual environments and raw data from commits. Installation on other operating systems requires separate verification because some pinned dependencies are platform-specific.
+
+Application launch commands will be added when the backend and dashboard entry points are implemented.
