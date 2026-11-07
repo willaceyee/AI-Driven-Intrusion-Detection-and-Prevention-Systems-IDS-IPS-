@@ -244,3 +244,29 @@ The official test dataset remains reserved for final evaluation. Validation scor
 | Random Forest | 95.86% | 97.41% | 96.63% | 8.96% | 0.456 s |
 
 Each prediction timing covers all 35,069 validation records. Random Forest was selected by validation F1. It produced 1,004 false positives among 11,200 normal records and missed 618 of 23,869 attack records. Decision Tree had a slightly lower false-positive rate, while Random Forest recovered more attacks. The saved Random Forest remains fitted on the 140,272-row training partition. These baseline results have not been evaluated on the official test set and do not establish performance on live traffic.
+
+## Running the detection backend
+
+From the repository root, use your project environment to start the local API:
+
+```powershell
+..\.venv\Scripts\python.exe -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+```
+
+Teammates whose environment is inside the repository should use `.\.venv\Scripts\python.exe`. The selected model artifact must already exist; run the Phase 8 training command first if needed. The backend loads the saved preprocessing and classifier once during startup.
+
+Open `http://127.0.0.1:8000/docs` to try the API. Expand `POST /predict`, choose **Try it out**, select a UTF-8 CSV using the `file` upload field and click **Execute**. Use prepared validation data for the demonstration. `GET /health` reports readiness after model loading succeeds.
+
+A successful prediction response contains an upload ID, `simulation: true`, total/normal/malicious counts, ordered per-record results and `simulated_block_list`. Each malicious result receives a block action and its demonstration identifier appears in that response's list. Each request has its own identifiers and list. The response represents the current upload and does not modify network controls.
+
+Invalid uploads return HTTP 422 with a `detail` message. The API checks the whole input before prediction, including duplicate headers, incorrect row lengths, missing or unexpected columns, non-finite numbers and empty categories. Optional labels are excluded through the shared feature validator. Unknown categories use the fitted pipeline's existing handling. The current service is a local demonstration API; upload-size controls and concurrent-load performance have not been evaluated.
+
+With the server running, verify the integration in a second terminal:
+
+```powershell
+..\.venv\Scripts\python.exe -m backend.check_api
+```
+
+The check compares 100 validation predictions with the saved model, checks result ordering and simulated actions, verifies label exclusion and reordered columns, exercises an unseen category and rejects ten invalid-upload cases. All checks passed during Phase 9 verification against a local server on port 8765. A different address can be supplied as the command's final argument.
+
+For interactive testing in `/docs`, use `data/processed/demo_sample.csv` if available. It contains 100 validation records, with 50 from each recorded class, and is a demonstration sample rather than a representative evaluation set. Large CSV uploads return one result per row and can produce multi-megabyte JSON responses that are slow for the API documentation page to render. Swagger syntax highlighting is disabled to reduce rendering overhead. Restart the backend and reload `/docs` after changing this setting. Use the dashboard or a programmatic client for full-dataset results.
