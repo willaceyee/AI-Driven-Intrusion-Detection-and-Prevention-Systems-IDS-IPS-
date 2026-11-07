@@ -216,3 +216,31 @@ Generated files are stored locally in the Git-ignored `data/processed/` folder:
 The verified run produced 140,272 training rows (44,800 normal and 95,472 attack) and 35,069 validation rows (11,200 normal and 23,869 attack). There were zero shared feature groups between the partitions. The fitted transformer produced 193 columns. This run uses only the supplied training CSV. Re-running the command replaces the generated outputs.
 
 The saved transformer is for the next model-training phase. Final model packaging must keep the fitted preprocessing and classifier together. If cross-validation is introduced later, preprocessing must be fitted separately inside each training fold.
+
+## Training and comparing baseline models
+
+From the repository root, run `python -m models.train` using the project environment. For the leader's existing environment, the command is:
+
+```powershell
+..\.venv\Scripts\python.exe -m models.train
+```
+
+This trains Logistic Regression (liblinear, maximum 2,000 iterations), an unrestricted Decision Tree and a Random Forest with 100 trees and two parallel workers. All use seed 42. These are initial baseline configurations. Each pipeline fits its own preprocessing exclusively on the prepared training partition and uses the same validation partition. Convergence warnings stop the run for investigation.
+
+The selection criterion is highest attack-class validation F1, using lower false-positive rate to break ties. All models use their default prediction decision rules. This criterion is an initial project choice; deployment-specific false-alarm costs may justify a different threshold later, using validation data only.
+
+The command writes `evaluation/validation_results.csv` and `evaluation/model_selection.json`, containing metrics, confusion counts, timing, model settings, source-file hashes and environment information. Prediction timing is the median of three warm batch runs including preprocessing, excluding file loading and input validation. It describes throughput on the current computer, rather than individual-request latency.
+
+The selected preprocessing and classifier are saved together in `models/artifacts/selected_pipeline.joblib`, which is excluded from Git. The script verifies that reloading reproduces predictions on 100 validation records. Future backend code must validate uploaded features with `validate_features` before calling this pipeline. Only load trusted model artifacts.
+
+The official test dataset remains reserved for final evaluation. Validation scores are used for model selection and should be labelled accordingly in the report. Re-running training replaces these reports and the selected artifact.
+
+### Initial validation results
+
+| Model | Precision | Recall | F1 | False-positive rate | Median batch prediction time |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Logistic Regression | 92.42% | 98.79% | 95.50% | 17.27% | 0.105 s |
+| Decision Tree | 95.91% | 95.08% | 95.49% | 8.65% | 0.117 s |
+| Random Forest | 95.86% | 97.41% | 96.63% | 8.96% | 0.456 s |
+
+Each prediction timing covers all 35,069 validation records. Random Forest was selected by validation F1. It produced 1,004 false positives among 11,200 normal records and missed 618 of 23,869 attack records. Decision Tree had a slightly lower false-positive rate, while Random Forest recovered more attacks. The saved Random Forest remains fitted on the 140,272-row training partition. These baseline results have not been evaluated on the official test set and do not establish performance on live traffic.
