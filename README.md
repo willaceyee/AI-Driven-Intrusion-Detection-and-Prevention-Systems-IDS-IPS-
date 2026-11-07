@@ -286,3 +286,30 @@ The dashboard displays normal and malicious prediction counts, a filterable prev
 The dashboard connects to the local backend on port 8000. It displays messages for unavailable services, invalid CSV uploads and request timeouts. A request waits up to 120 seconds for a response. Results are held in the current Streamlit session; large responses still require memory even though the visible tables are limited.
 
 Streamlit AppTest verified the initial disabled button, a real 100-row API upload, metric rendering, result filtering and the preview limit. This test supplied the upload programmatically; manual browser file selection and download should also be checked during the team demonstration.
+
+## Integration verification
+
+On 7 November 2026, the local backend checks passed prediction parity on 100 records, row ordering, summary counts, simulated block actions, label exclusion, reordered columns, unseen categories and ten invalid-upload cases.
+
+The dashboard integration check submitted all 35,069 validation records through the running backend. It verified both prediction filters, the 100-row preview limit and equality between every exported CSV row and the response records. The upload, dashboard checks and filtering completed in 3.03 seconds on the leader's computer. This is a single integration-test measurement, not a browser rendering or load-test benchmark.
+
+Invalid uploads were rejected through the live API. Simulated connection failures and timeouts displayed the expected messages and cleared previous results, preventing stale metrics from remaining visible. Dependency checks reported no broken requirements.
+
+Run the repeatable checks with the backend active:
+
+```powershell
+..\.venv\Scripts\python.exe -m backend.check_api
+..\.venv\Scripts\python.exe -m frontend.check_dashboard
+```
+
+The dashboard check uses Streamlit AppTest with programmatic uploads and captures the CSV supplied to the download button. Browser file selection, the browser's actual download operation, visual layout and installation on a different computer still require manual verification.
+
+### Teammate verification checklist
+
+1. Clone the repository, create a Python 3.12 environment and install `requirements.txt` using the shared-environment instructions.
+2. Download the two UNSW-NB15 files into `data/raw/`.
+3. Run `python preprocessing/prepare.py`, then `python -m models.train` with that environment. These steps recreate the ignored processed files and saved model required by the app.
+4. Start `python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000`, then start the dashboard in another terminal with `python -m streamlit run frontend/app.py --server.address 127.0.0.1 --server.port 8501`.
+5. Upload `data/processed/validation.csv` through the dashboard. The small `demo_sample.csv` is an optional local convenience file and is absent from a fresh clone.
+6. Confirm predictions appear, try both filters, download the results and check that the CSV row count matches the dashboard total. Run both automated check commands above using the teammate's environment.
+7. Record the teammate's name, operating system, Python version and outcome. This cross-computer verification remains pending until someone performs it.
