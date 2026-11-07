@@ -1,0 +1,16 @@
+{
+  "model": "Random Forest",
+  "model_sha256": "a171cb07a98e92d3e0025818f9e3a9ecb379616579ee09172ea6d9048e8da2e9",
+  "test_sha256": "734fe6642edf758f7c94d7d9149426b49d202fe8e7bf0bef47392489c3c0a559",
+  "training_sha256": "870177afa2462803dfc13130dc91c035a4aa7e0d1ae2710eb975d53ac369e7f1",
+  "overlapping_test_rows": 6514,
+  "prediction_seconds": [
+    1.1750299999839626,
+    1.0571296999696642,
+    1.070786299998872
+  ],
+  "median_batch_prediction_seconds": 1.070786299998872,
+  "timing_scope": "Full test batch including preprocessing; excludes CSV loading, validation and HTTP/UI",
+  "decision_rule": "Saved classifier predict rule; no training or threshold tuning",
+  "category_rate_meaning": "Attack detection rate for attack categories; false-positive rate for Normal"
+}

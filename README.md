@@ -313,3 +313,32 @@ The dashboard check uses Streamlit AppTest with programmatic uploads and capture
 5. Upload `data/processed/validation.csv` through the dashboard. The small `demo_sample.csv` is an optional local convenience file and is absent from a fresh clone.
 6. Confirm predictions appear, try both filters, download the results and check that the CSV row count matches the dashboard total. Run both automated check commands above using the teammate's environment.
 7. Record the teammate's name, operating system, Python version and outcome. This cross-computer verification remains pending until someone performs it.
+
+## Final baseline test evaluation
+
+Run `python -m evaluation.evaluate` from the repository root using the project environment. The evaluation loads the saved selected pipeline and applies its existing decision rule, without retraining or tuning on test data. It verifies the recorded training-file hash and records the model and test-file hashes.
+
+| Metric | Full test set | Excluding records present in model training |
+| --- | ---: | ---: |
+| Records | 82,332 | 75,818 |
+| Normal records | 37,000 | 35,821 |
+| Attack records | 45,332 | 39,997 |
+| Accuracy | 87.17% | 86.59% |
+| Attack precision | 81.85% | 80.52% |
+| Attack recall | 98.54% | 98.38% |
+| Attack F1 | 89.43% | 88.56% |
+| False-positive rate | 26.77% | 26.57% |
+| False positives | 9,904 | 9,518 |
+| Missed attacks | 661 | 646 |
+
+The overlap check excludes 6,514 test rows whose 42 input values occur in the actual 140,272-row model-training partition. The earlier 8,541 count compared against the entire supplied training file, including the portion later used for validation. These comparisons answer different questions. The filtered test population has different class proportions and still may contain other relationships between records; removing exact overlap does not establish complete statistical independence.
+
+Median prediction time was 1.071 seconds for all 82,332 records over three warm runs, including preprocessing and excluding CSV loading, validation, HTTP and dashboard rendering. This is batch timing on the leader's computer.
+
+The Random Forest detected most attacks but incorrectly flagged more than one quarter of normal test records. Its validation F1 was 96.63%, compared with 89.43% on the full test set. This gap limits claims about generalisation. The similar false-positive rate after removing training overlap suggests exact overlap alone does not explain the false alarms. Identifying their cause requires further investigation.
+
+Fuzzers accounted for 604 of the 661 missed attacks, with a detection rate of 90.04%. All 44 Worms records were detected, but that small sample provides limited evidence. The category report measures binary attack detection within each true category; the model does not predict individual attack types. For the Normal category, its attack-prediction rate is the false-positive rate.
+
+The simulated prevention demonstration inherits these errors: a false-positive prediction would create an incorrect simulated block entry. These baseline results support reporting a functional prototype with substantial false-alarm limitations. Future experiments must document their development decisions and use a new untouched evaluation set for fresh confirmatory claims after these test results have informed development.
+
+Outputs are `evaluation/test_results.csv`, `evaluation/test_category_results.csv`, `evaluation/test_evaluation.json` and `evaluation/test_confusion_matrices.png`. Metric totals and category totals were checked, F1 was independently recalculated from confusion counts, and the figure was visually inspected. The selected model artifact is unchanged by evaluation.
