@@ -270,3 +270,19 @@ With the server running, verify the integration in a second terminal:
 The check compares 100 validation predictions with the saved model, checks result ordering and simulated actions, verifies label exclusion and reordered columns, exercises an unseen category and rejects ten invalid-upload cases. All checks passed during Phase 9 verification against a local server on port 8765. A different address can be supplied as the command's final argument.
 
 For interactive testing in `/docs`, use `data/processed/demo_sample.csv` if available. It contains 100 validation records, with 50 from each recorded class, and is a demonstration sample rather than a representative evaluation set. Large CSV uploads return one result per row and can produce multi-megabyte JSON responses that are slow for the API documentation page to render. Swagger syntax highlighting is disabled to reduce rendering overhead. Restart the backend and reload `/docs` after changing this setting. Use the dashboard or a programmatic client for full-dataset results.
+
+## Running the dashboard
+
+Start the backend using the command above. In a second terminal at the repository root, run:
+
+```powershell
+..\.venv\Scripts\python.exe -m streamlit run frontend/app.py --server.address 127.0.0.1 --server.port 8501
+```
+
+Teammates with an environment inside the repository should substitute `.\.venv\Scripts\python.exe`. Open `http://127.0.0.1:8501`, upload `data/processed/demo_sample.csv` and click **Run detection**.
+
+The dashboard displays normal and malicious prediction counts, a filterable preview limited to 100 rows, alerts and up to 100 simulated block-list entries. **Download all predictions (CSV)** includes every result and simulated action. Changing the uploaded file clears the previous results. Each detection request replaces the current results. Counts describe predictions, rather than measured accuracy.
+
+The dashboard connects to the local backend on port 8000. It displays messages for unavailable services, invalid CSV uploads and request timeouts. A request waits up to 120 seconds for a response. Results are held in the current Streamlit session; large responses still require memory even though the visible tables are limited.
+
+Streamlit AppTest verified the initial disabled button, a real 100-row API upload, metric rendering, result filtering and the preview limit. This test supplied the upload programmatically; manual browser file selection and download should also be checked during the team demonstration.
