@@ -281,11 +281,15 @@ Start the backend using the command above. In a second terminal at the repositor
 
 Teammates with an environment inside the repository should substitute `.\.venv\Scripts\python.exe`. Open `http://127.0.0.1:8501`, upload `data/processed/demo_sample.csv` and click **Run detection**.
 
-The dashboard uses a dark Security Operations Center layout with four focused views: command overview, incident investigation, attack replay, and model assurance and exports. The overview visualizes the real prediction split and aggregates flagged predictions across ordered CSV row segments; this is file order rather than an event timeline. Investigation provides prediction, simulated-action and record search filters with previews limited to 100 rows. Attack replay steps through returned records in upload order and is explicitly a deterministic review rather than live packet playback.
+The dashboard uses a dark Security Operations Center layout with six focused views: command overview, incident investigation, traffic intelligence, scenario globe, attack replay, and model assurance and exports. The overview visualizes the real prediction split and aggregates flagged predictions across ordered CSV row segments; this is file order rather than an event timeline. Investigation provides prediction, simulated-action and record search filters with previews limited to 100 rows. A selected traffic-intelligence record can be handed directly to investigation and replay. Attack replay steps through returned records in upload order and is explicitly a deterministic review rather than live packet playback.
 
-**Download all predictions (CSV)** includes every result and simulated action, while the JSON export preserves the complete backend response. The model-assurance view presents the stored Random Forest validation metrics separately from the current upload and highlights the 8.96% validation false-positive rate. Alerts and up to 100 simulated block-list entries remain visible in the investigation view. Changing the uploaded file clears the previous results, and each successful request replaces the current case. Counts describe predictions rather than measured accuracy; no live traffic, IP address, geolocation or attack category is inferred.
+Traffic intelligence uses the actual uploaded feature records and their backend predictions. It applies the project's existing numeric scaling and categorical one-hot encoding, then fits a deterministic PCA projection to a class-aware sample capped at 1,200 records. Plotly supplies an interactive 3D view and a lower-cost 2D alternative. Position and distance represent similarity in transformed feature space only: they are not physical topology, communication edges, geography, devices, IP addresses, or event time. The interface reports the displayed components' explained variance and preserves the uploaded row number for record-level investigation.
 
-Streamlit remains the selected frontend for this milestone because the current system is a local, reproducible upload-and-review workflow. It supports the required session state, responsive layout, filtering, tables and Altair analytics without adding a second frontend build. React should be reconsidered if the backend later provides genuine streaming events, connection edges or geolocation suitable for high-frequency node graphs or a WebGL globe.
+The scenario globe is a separate deterministic tabletop aid. Its locations, paths, activity sequences and outcomes are explicitly synthetic and are never presented as Random Forest detections or global attack telemetry. It intentionally remains secondary to the real upload and investigation workflow.
+
+**Download all predictions (CSV)** includes every result and simulated action, while the JSON export preserves the complete backend response. The model-assurance view keeps validation evidence separate from the reserved test evaluation: validation attack F1 is 96.63% with 8.96% FPR, while reserved-test attack F1 is 89.43% with 26.77% FPR. The test figures were reproduced from the saved pipeline and local official test CSV; they are not metrics for the current upload and do not establish live-network effectiveness. Alerts and up to 100 simulated block-list entries remain visible in the investigation view. Changing the uploaded file clears the previous results, and each successful request replaces the current case. Counts describe predictions rather than measured accuracy; no live traffic, IP address, geolocation or attack category is inferred.
+
+Streamlit and Plotly remain sufficient for this milestone because the current system is a local, reproducible upload-and-review workflow. They support the required session state, responsive layout, filtering, tables, bounded 3D interaction and accessible 2D fallback without adding a second frontend build. React should be reconsidered if a backend later provides genuine streaming events, communication edges or approved geolocation requiring high-frequency WebGL coordination across views.
 
 The dashboard connects to the local backend on port 8000. It displays messages for unavailable services, invalid CSV uploads and request timeouts. A request waits up to 120 seconds for a response. Results are held in the current Streamlit session; large responses still require memory even though the visible tables are limited.
 
@@ -295,7 +299,7 @@ Streamlit AppTest verified the initial disabled button, a real 100-row API uploa
 
 On 7 November 2026, the local backend checks passed prediction parity on 100 records, row ordering, summary counts, simulated block actions, label exclusion, reordered columns, unseen categories and ten invalid-upload cases.
 
-The dashboard integration check submitted all 35,069 validation records through the running backend. It verified both prediction filters, the 100-row preview limit and equality between every exported CSV row and the response records. The upload, dashboard checks and filtering completed in 3.03 seconds on the leader's computer. This is a single integration-test measurement, not a browser rendering or load-test benchmark.
+The dashboard integration check submits all 35,069 validation records through the running backend. It verifies both prediction filters, exact record handoff/search, the 100-row preview limit and equality between every exported CSV row and the response records. Runtime depends on the current computer and is a functional measurement rather than a browser load-test benchmark.
 
 Invalid uploads were rejected through the live API. Simulated connection failures and timeouts displayed the expected messages and cleared previous results, preventing stale metrics from remaining visible. Dependency checks reported no broken requirements.
 
@@ -303,10 +307,11 @@ Run the repeatable checks with the backend active:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m backend.check_api
+..\.venv\Scripts\python.exe -m frontend.check_traffic_intelligence
 ..\.venv\Scripts\python.exe -m frontend.check_dashboard
 ```
 
-The frontend response-contract check does not require a running backend and is useful for quick UI regression checks:
+The traffic-intelligence check covers deterministic bounded sampling, PCA repeatability, filters, 2D fallback and synthetic-scenario stability. It and the frontend response-contract check do not require a running backend and are useful for quick UI regression checks:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m frontend.check_dashboard_contract

@@ -11,18 +11,49 @@ import requests
 import streamlit as st
 
 from frontend.soc_theme import apply_soc_theme, render_brand, render_empty_state, render_section_header
+from frontend.traffic_intelligence import (
+    CATEGORICAL,
+    NUMERIC,
+    THREAT_SCENARIOS,
+    build_traffic_projection,
+    filter_projection,
+    get_scenario,
+    make_projection_figure,
+    make_scenario_globe,
+)
 
 
 BACKEND = "http://127.0.0.1:8000"
 PREVIEW_ROWS = 100
 SEQUENCE_SEGMENTS = 48
 ROOT = Path(__file__).resolve().parents[1]
+TEST_ASSURANCE = {
+    "f1": 0.8942516540382556,
+    "false_positive_rate": 0.2676756756756757,
+    "true_negative": 27096,
+    "false_positive": 9904,
+    "false_negative": 661,
+    "true_positive": 44671,
+}
 
 
 def clear_results():
     """Remove results whenever the selected upload changes or a request fails."""
     st.session_state.pop("prediction_result", None)
     st.session_state.pop("result_filename", None)
+    st.session_state.pop("traffic_projection", None)
+    st.session_state.pop("projection_metadata", None)
+    st.session_state.pop("projection_error", None)
+    st.session_state.pop("investigation_query", None)
+    st.session_state.pop("replay_position", None)
+    st.session_state.pop("record_linked_notice", None)
+
+
+def link_record_to_workflow(record_id, row_number):
+    """Prepare a sampled record for the existing investigation and replay widgets."""
+    st.session_state.investigation_query = record_id
+    st.session_state.replay_position = int(row_number)
+    st.session_state.record_linked_notice = int(row_number)
 
 
 def summarise_validation_error(detail):
@@ -59,8 +90,16 @@ def run_detection(upload):
                 st.code(detail, language=None, wrap_lines=True)
             return
         response.raise_for_status()
-        st.session_state.prediction_result = response.json()
+        result = response.json()
+        st.session_state.prediction_result = result
         st.session_state.result_filename = upload.name
+        try:
+            with st.spinner("Preparing a bounded feature-similarity projection…"):
+                projection, metadata = build_traffic_projection(upload.getvalue(), result["results"])
+            st.session_state.traffic_projection = projection
+            st.session_state.projection_metadata = metadata
+        except Exception as error:  # Detection remains usable if optional visualization preparation fails.
+            st.session_state.projection_error = str(error)
     except requests.exceptions.Timeout:
         st.error("The request timed out. Try a smaller CSV and check the backend terminal.")
     except requests.exceptions.ConnectionError:
@@ -191,7 +230,9 @@ def render_investigation(rows, result):
     with controls[1]:
         action = st.selectbox("Simulated action", ["All actions", "Block", "Allow"])
     with controls[2]:
-        query = st.text_input("Find record", placeholder="Record ID or row number")
+        query = st.text_input(
+            "Find record", placeholder="Record ID or row number", key="investigation_query"
+        )
     visible = rows
     if selection != "All":
         visible = visible[visible["prediction"] == selection.lower()]
@@ -199,9 +240,11 @@ def render_investigation(rows, result):
         visible = visible[visible["simulated_action"] == action.lower()]
     if query.strip():
         needle = query.strip().lower()
+        record_ids = visible["record_id"].str.lower()
+        exact_record_id = record_ids.eq(needle)
+        record_match = exact_record_id if exact_record_id.any() else record_ids.str.contains(needle, regex=False)
         visible = visible[
-            visible["record_id"].str.lower().str.contains(needle, regex=False)
-            | visible["row_number"].astype(str).eq(needle)
+            record_match | visible["row_number"].astype(str).eq(needle)
         ]
     st.caption(f"Showing up to {PREVIEW_ROWS} of {len(visible):,} matching records.")
     st.dataframe(
@@ -239,6 +282,171 @@ def render_investigation(rows, result):
         st.success("No malicious predictions were returned for this upload.")
 
 
+def render_traffic_intelligence():
+    render_section_header(
+        "Traffic intelligence explorer",
+        "Explore similarity among actual uploaded feature records using a bounded, deterministic projection.",
+        "FEATURE SPACE",
+    )
+    projection = st.session_state.get("traffic_projection")
+    metadata = st.session_state.get("projection_metadata")
+    if projection is None or metadata is None:
+        st.warning(
+            "The detection results remain available, but the feature projection could not be prepared. "
+            f"{st.session_state.get('projection_error', 'No projection data is available.')}"
+        )
+        return
+
+    variance = metadata["explained_variance_ratio"]
+    explained = sum(variance[:3])
+    st.markdown(
+        f"""<div class="analyst-callout compact"><div class="callout-label">HOW TO READ THIS</div>
+        <div><strong>Nearby points have similar transformed UNSW-NB15 feature values.</strong>
+        Position is PCA feature space—not geography, network topology, communication, or time.
+        The three displayed components explain {explained:.1%} of variance in the bounded sample.</div></div>""",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"Showing a deterministic, class-aware sample of {metadata['sample_rows']:,} from "
+        f"{metadata['source_rows']:,} uploaded records · seed {metadata['seed']} · maximum {metadata['max_points']:,}."
+    )
+
+    control_columns = st.columns(3)
+    with control_columns[0]:
+        prediction = st.selectbox(
+            "Projection prediction", ["All", "Malicious", "Normal"], key="projection_prediction"
+        )
+    with control_columns[1]:
+        categorical_feature = st.selectbox(
+            "Categorical feature", ["None", *CATEGORICAL], key="projection_category"
+        )
+    with control_columns[2]:
+        numeric_feature = st.selectbox(
+            "Numeric feature", ["None", *NUMERIC], key="projection_numeric"
+        )
+
+    categorical_values = None
+    if categorical_feature != "None":
+        options = sorted(projection[categorical_feature].astype(str).unique())
+        categorical_values = st.multiselect(
+            f"Filter {categorical_feature}", options, key=f"projection_values_{categorical_feature}"
+        )
+    numeric_range = None
+    if numeric_feature != "None":
+        minimum = float(projection[numeric_feature].min())
+        maximum = float(projection[numeric_feature].max())
+        if minimum < maximum:
+            numeric_range = st.slider(
+                f"Filter {numeric_feature}",
+                min_value=minimum,
+                max_value=maximum,
+                value=(minimum, maximum),
+                key=f"projection_range_{numeric_feature}",
+            )
+        else:
+            st.caption(f"All sampled records have {numeric_feature} = {minimum:g}.")
+
+    visible = filter_projection(
+        projection,
+        prediction=prediction,
+        categorical_feature=None if categorical_feature == "None" else categorical_feature,
+        categorical_values=categorical_values,
+        numeric_feature=None if numeric_feature == "None" else numeric_feature,
+        numeric_range=numeric_range,
+    )
+    st.caption(f"{len(visible):,} sampled records match the active projection filters.")
+    if visible.empty:
+        st.info("No sampled records match this filter combination. Adjust a filter to restore the view.")
+        return
+
+    view_mode = st.radio(
+        "Projection view",
+        ["3D feature space", "2D accessible view"],
+        horizontal=True,
+        key="projection_view_mode",
+    )
+    dimensions = 3 if view_mode.startswith("3D") else 2
+    st.plotly_chart(
+        make_projection_figure(visible, dimensions=dimensions),
+        width="stretch",
+        config={"displaylogo": False, "scrollZoom": True},
+        key=f"traffic_projection_{dimensions}",
+    )
+
+    row_options = visible["row_number"].astype(int).tolist()
+    selected_row = st.selectbox(
+        "Inspect sampled record",
+        row_options,
+        format_func=lambda value: (
+            f"Row {value:,} · "
+            f"{visible.loc[visible['row_number'] == value, 'prediction'].iloc[0].upper()}"
+        ),
+        key="projection_record",
+    )
+    record = visible.loc[visible["row_number"] == selected_row].iloc[0]
+    tone = "replay-danger" if record["prediction"] == "malicious" else "replay-safe"
+    st.markdown(
+        f"""<div class="replay-card {tone}"><div class="replay-index">SAMPLED RECORD · CSV ROW {int(record['row_number']):,}</div>
+        <div class="replay-status">{record['prediction'].upper()} · {record['simulated_action'].upper()}</div>
+        <div class="replay-grid"><span>Record</span><strong>{escape(str(record['record_id']))}</strong>
+        <span>Protocol / service / state</span><strong>{escape(str(record['proto']))} / {escape(str(record['service']))} / {escape(str(record['state']))}</strong>
+        <span>PCA coordinates</span><strong>{record['pc1']:.3f}, {record['pc2']:.3f}, {record['pc3']:.3f}</strong></div></div>""",
+        unsafe_allow_html=True,
+    )
+    st.button(
+        "Use this record in investigation and replay",
+        key="projection_handoff",
+        on_click=link_record_to_workflow,
+        args=(record["record_id"], int(record["row_number"])),
+    )
+    if st.session_state.get("record_linked_notice") == int(record["row_number"]):
+        st.success("Record linked. Open Incident investigation or Attack replay to continue.")
+
+
+def render_scenario_globe():
+    render_section_header(
+        "Scenario threat globe",
+        "Explore a deterministic tabletop scenario that is deliberately separate from model detections.",
+        "SYNTHETIC",
+    )
+    st.warning(
+        "Scenario only: every location, route, activity step, and response below is synthetic. "
+        "The Random Forest model did not detect or infer geography."
+    )
+    scenario_id = st.selectbox(
+        "Tabletop scenario",
+        [item.scenario_id for item in THREAT_SCENARIOS],
+        format_func=lambda value: get_scenario(value).name,
+        key="scenario_id",
+    )
+    scenario = get_scenario(scenario_id)
+    st.plotly_chart(
+        make_scenario_globe(scenario),
+        width="stretch",
+        config={"displaylogo": False, "scrollZoom": True},
+        key="scenario_globe",
+    )
+    scenario_columns = st.columns(3)
+    scenario_facts = [
+        ("Synthetic origin", scenario.origin_name, scenario.attack_type),
+        ("Synthetic destination", scenario.destination_name, "Tabletop destination"),
+        ("Response outcome", scenario.outcome, "Simulated control only"),
+    ]
+    for column, (label, value, detail) in zip(scenario_columns, scenario_facts):
+        with column:
+            st.markdown(
+                f"""<div class="scenario-fact"><span>{escape(label)}</span><strong>{escape(value)}</strong>
+                <small>{escape(detail)}</small></div>""",
+                unsafe_allow_html=True,
+            )
+    st.markdown("#### Scenario activity sequence")
+    steps = "".join(
+        f'<div><b>{number:02d}</b><span>{escape(step)}</span></div>'
+        for number, step in enumerate(scenario.steps, start=1)
+    )
+    st.markdown(f'<div class="scenario-steps">{steps}</div>', unsafe_allow_html=True)
+
+
 def render_replay(rows):
     render_section_header(
         "Attack replay",
@@ -247,7 +455,7 @@ def render_replay(rows):
     )
     if rows.empty:
         return
-    position = st.slider("Record position", 1, len(rows), 1)
+    position = st.slider("Record position", 1, len(rows), key="replay_position")
     event = rows.iloc[position - 1]
     malicious = event["prediction"] == "malicious"
     status = "THREAT DETECTED" if malicious else "TRAFFIC ALLOWED"
@@ -271,17 +479,21 @@ def render_exports(rows, result):
     if assurance:
         assurance_columns = st.columns(4)
         assurance_values = [
-            ("Validation precision", assurance["precision"]),
-            ("Validation recall", assurance["recall"]),
-            ("Validation F1", assurance["f1"]),
-            ("False-positive rate", assurance["false_positive_rate"]),
+            ("Validation attack F1", assurance["f1"], "Model selection split"),
+            ("Validation FPR", assurance["false_positive_rate"], "1,004 / 11,200 normal"),
+            ("Test attack F1", TEST_ASSURANCE["f1"], "Reserved test set"),
+            ("Test FPR", TEST_ASSURANCE["false_positive_rate"], "9,904 / 37,000 normal"),
         ]
-        for column, (label, value) in zip(assurance_columns, assurance_values):
+        for column, (label, value, detail) in zip(assurance_columns, assurance_values):
             with column:
-                metric_card(label, f"{value:.2%}", "Held-out validation only")
+                metric_card(label, f"{value:.2%}", detail)
         st.caption(
-            "These are stored Random Forest validation results, not metrics for the current upload. "
-            "Official test-set evaluation and live-network performance remain unverified."
+            "Validation selected the model; the reserved test set estimates later generalisation. "
+            "They are separate evaluations—not metrics for the current upload or evidence of live-network effectiveness."
+        )
+        st.warning(
+            "Generalisation warning: false-positive rate increased from 8.96% on validation to 26.77% "
+            "on the reserved test set. Operational deployment would require threshold and error-cost analysis."
         )
     st.markdown("#### Current case exports")
     csv_col, json_col = st.columns(2)
@@ -337,16 +549,28 @@ else:
     st.markdown(
         """<div class="case-flow"><div class="flow-active"><b>01 DETECT</b><span>Model decisions ready</span></div>
         <div><b>02 INVESTIGATE</b><span>Validate flagged rows</span></div>
-        <div><b>03 RESPOND</b><span>Review simulated actions</span></div></div>""",
+        <div><b>03 VISUALIZE</b><span>Explore feature similarity</span></div>
+        <div><b>04 RESPOND</b><span>Review simulated actions</span></div></div>""",
         unsafe_allow_html=True,
     )
-    overview_tab, investigate_tab, replay_tab, export_tab = st.tabs(
-        ["Command overview", "Incident investigation", "Attack replay", "Model & exports"]
+    overview_tab, investigate_tab, traffic_tab, globe_tab, replay_tab, export_tab = st.tabs(
+        [
+            "Command overview",
+            "Incident investigation",
+            "Traffic intelligence",
+            "Scenario globe",
+            "Attack replay",
+            "Model & exports",
+        ]
     )
     with overview_tab:
         render_overview(rows, result["summary"])
     with investigate_tab:
         render_investigation(rows, result)
+    with traffic_tab:
+        render_traffic_intelligence()
+    with globe_tab:
+        render_scenario_globe()
     with replay_tab:
         render_replay(rows)
     with export_tab:

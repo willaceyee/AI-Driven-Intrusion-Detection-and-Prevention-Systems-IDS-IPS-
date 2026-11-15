@@ -12,6 +12,10 @@ from streamlit.testing.v1 import AppTest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def detection_button(app):
+    return next(button for button in app.button if button.label == "Run detection")
+
+
 def check():
     upload = BytesIO(b"dur\n1\n")
     upload.name = "soc_sample.csv"
@@ -44,12 +48,13 @@ def check():
         patch("streamlit.download_button") as download,
     ):
         app = AppTest.from_file(str(ROOT / "frontend/app.py")).run(timeout=15)
-        app.button[0].click().run(timeout=15)
+        detection_button(app).click().run(timeout=15)
         assert not app.exception and not app.error
-        assert len(app.tabs) == 4 and len(app.slider) == 1
+        assert len(app.tabs) == 6 and len(app.slider) == 1
         assert len(app.dataframe[0].value) == 3
         assert len(app.dataframe[1].value) == 2
 
+        assert len(app.selectbox) >= 3
         app.selectbox[0].select("Malicious").run(timeout=15)
         assert app.dataframe[0].value.prediction.eq("malicious").all()
         app.selectbox[1].select("Block").run(timeout=15)
@@ -65,7 +70,7 @@ def check():
             (requests.exceptions.Timeout(), "timed out"),
         ]:
             post.side_effect = error
-            app.button[0].click().run(timeout=15)
+            detection_button(app).click().run(timeout=15)
             assert not app.exception and message in app.error[0].value
             assert "prediction_result" not in app.session_state
 
@@ -75,7 +80,7 @@ def check():
         }
         post.side_effect = None
         post.return_value = invalid
-        app.button[0].click().run(timeout=15)
+        detection_button(app).click().run(timeout=15)
         assert not app.exception and "2 required column(s) missing" in app.error[0].value
         assert "['dur'" not in app.error[0].value
         assert "prediction_result" not in app.session_state
