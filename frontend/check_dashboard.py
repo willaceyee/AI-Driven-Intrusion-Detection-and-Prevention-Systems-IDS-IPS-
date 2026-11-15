@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def check():
     app_path = str(ROOT / "frontend/app.py")
-    app = AppTest.from_file(app_path).run()
+    app = AppTest.from_file(app_path).run(timeout=15)
     assert not app.exception and app.button[0].disabled
     upload = BytesIO((ROOT / "data/processed/validation.csv").read_bytes())
     upload.name = "validation.csv"
@@ -26,7 +26,8 @@ def check():
         assert not app.exception and not app.error
         result = app.session_state["prediction_result"]
         assert result["summary"]["total"] == 35069
-        exported = pd.read_csv(BytesIO(download.call_args.args[1]))
+        csv_call = next(call for call in download.call_args_list if call.kwargs["file_name"] == "detection_results.csv")
+        exported = pd.read_csv(BytesIO(csv_call.args[1]))
         pd.testing.assert_frame_equal(exported, pd.DataFrame(result["results"]))
         assert len(app.dataframe[0].value) == 100
         assert len(app.dataframe[1].value) <= 100

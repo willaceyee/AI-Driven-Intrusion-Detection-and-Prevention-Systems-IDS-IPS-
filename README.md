@@ -281,7 +281,11 @@ Start the backend using the command above. In a second terminal at the repositor
 
 Teammates with an environment inside the repository should substitute `.\.venv\Scripts\python.exe`. Open `http://127.0.0.1:8501`, upload `data/processed/demo_sample.csv` and click **Run detection**.
 
-The dashboard displays normal and malicious prediction counts, a filterable preview limited to 100 rows, alerts and up to 100 simulated block-list entries. **Download all predictions (CSV)** includes every result and simulated action. Changing the uploaded file clears the previous results. Each detection request replaces the current results. Counts describe predictions, rather than measured accuracy.
+The dashboard uses a dark Security Operations Center layout with four focused views: command overview, incident investigation, attack replay, and model assurance and exports. The overview visualizes the real prediction split and aggregates flagged predictions across ordered CSV row segments; this is file order rather than an event timeline. Investigation provides prediction, simulated-action and record search filters with previews limited to 100 rows. Attack replay steps through returned records in upload order and is explicitly a deterministic review rather than live packet playback.
+
+**Download all predictions (CSV)** includes every result and simulated action, while the JSON export preserves the complete backend response. The model-assurance view presents the stored Random Forest validation metrics separately from the current upload and highlights the 8.96% validation false-positive rate. Alerts and up to 100 simulated block-list entries remain visible in the investigation view. Changing the uploaded file clears the previous results, and each successful request replaces the current case. Counts describe predictions rather than measured accuracy; no live traffic, IP address, geolocation or attack category is inferred.
+
+Streamlit remains the selected frontend for this milestone because the current system is a local, reproducible upload-and-review workflow. It supports the required session state, responsive layout, filtering, tables and Altair analytics without adding a second frontend build. React should be reconsidered if the backend later provides genuine streaming events, connection edges or geolocation suitable for high-frequency node graphs or a WebGL globe.
 
 The dashboard connects to the local backend on port 8000. It displays messages for unavailable services, invalid CSV uploads and request timeouts. A request waits up to 120 seconds for a response. Results are held in the current Streamlit session; large responses still require memory even though the visible tables are limited.
 
@@ -300,6 +304,12 @@ Run the repeatable checks with the backend active:
 ```powershell
 ..\.venv\Scripts\python.exe -m backend.check_api
 ..\.venv\Scripts\python.exe -m frontend.check_dashboard
+```
+
+The frontend response-contract check does not require a running backend and is useful for quick UI regression checks:
+
+```powershell
+..\.venv\Scripts\python.exe -m frontend.check_dashboard_contract
 ```
 
 The dashboard check uses Streamlit AppTest with programmatic uploads and captures the CSV supplied to the download button. Browser file selection, the browser's actual download operation, visual layout and installation on a different computer still require manual verification.
