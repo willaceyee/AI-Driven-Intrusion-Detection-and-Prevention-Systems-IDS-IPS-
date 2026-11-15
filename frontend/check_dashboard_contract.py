@@ -50,7 +50,7 @@ def check():
         app = AppTest.from_file(str(ROOT / "frontend/app.py")).run(timeout=15)
         detection_button(app).click().run(timeout=15)
         assert not app.exception and not app.error
-        assert len(app.tabs) == 6 and len(app.slider) == 1
+        assert len(app.tabs) == 7 and len(app.slider) == 1
         assert len(app.dataframe[0].value) == 3
         assert len(app.dataframe[1].value) == 2
 

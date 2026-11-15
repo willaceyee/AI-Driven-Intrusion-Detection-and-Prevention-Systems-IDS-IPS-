@@ -9,6 +9,8 @@ import pandas as pd
 import requests
 from streamlit.testing.v1 import AppTest
 
+from frontend.detection_intelligence import VALIDATION_SNAPSHOT, snapshot_from_labeled_records
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -30,6 +32,18 @@ def check():
         assert not app.exception and not app.error
         result = app.session_state["prediction_result"]
         assert result["summary"]["total"] == 35069
+        current_evaluation = snapshot_from_labeled_records(app.session_state["upload_context"])
+        assert (
+            current_evaluation.true_negative,
+            current_evaluation.false_positive,
+            current_evaluation.false_negative,
+            current_evaluation.true_positive,
+        ) == (
+            VALIDATION_SNAPSHOT.true_negative,
+            VALIDATION_SNAPSHOT.false_positive,
+            VALIDATION_SNAPSHOT.false_negative,
+            VALIDATION_SNAPSHOT.true_positive,
+        )
         csv_call = next(call for call in download.call_args_list if call.kwargs["file_name"] == "detection_results.csv")
         exported = pd.read_csv(BytesIO(csv_call.args[1]))
         pd.testing.assert_frame_equal(exported, pd.DataFrame(result["results"]))

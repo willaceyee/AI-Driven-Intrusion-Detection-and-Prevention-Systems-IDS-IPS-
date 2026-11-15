@@ -73,13 +73,23 @@ def apply_soc_theme():
         .scenario-steps>div { display:flex; gap:.7rem; align-items:center; padding:.9rem; background:#0b1624; }
         .scenario-steps b { color:var(--cyan); font-family:monospace; font-size:.72rem; }
         .scenario-steps span { color:#9aacbf; font-size:.78rem; }
+        .evidence-note { margin:.8rem 0; padding:.85rem 1rem; border-left:2px solid var(--cyan); background:rgba(61,224,197,.04); color:#9fb0c2; font-size:.8rem; }
+        .evidence-note strong { color:#e8f0f8; }
+        .explanation-locked { display:grid; grid-template-columns:minmax(210px,.7fr) 1.5fr; gap:1.2rem; align-items:center; padding:1rem; border:1px dashed #3b4d64; border-radius:12px; background:rgba(11,22,36,.65); }
+        .explanation-locked div { display:flex; flex-direction:column; gap:.25rem; }
+        .explanation-locked span,.decision-lab span { color:var(--amber); font-size:.62rem; font-weight:800; letter-spacing:.13em; }
+        .explanation-locked strong,.decision-lab strong { color:#dce5ed; font-size:.95rem; }
+        .explanation-locked p,.decision-lab p { color:#8497ac; font-size:.78rem; line-height:1.55; margin:0; }
+        .decision-lab { display:grid; grid-template-columns:1fr auto 1fr; gap:1rem; align-items:stretch; margin:.8rem 0; }
+        .decision-lab>div:not(.decision-arrow) { display:flex; flex-direction:column; gap:.35rem; padding:1rem; border:1px solid var(--line); border-radius:12px; background:#0b1624; }
+        .decision-lab .decision-arrow { display:flex; align-items:center; color:var(--cyan); font-size:1.4rem; }
         [data-baseweb="tab-list"] { gap:.25rem; border-bottom:1px solid var(--line); overflow-x:auto; scrollbar-width:thin; }
         [data-baseweb="tab"] { color:#8497ac; } [aria-selected="true"] { color:var(--cyan)!important; }
         [data-testid="stDataFrame"] { border:1px solid var(--line); border-radius:10px; overflow:hidden; }
         .stButton>button[kind="primary"],.stDownloadButton>button { border-radius:8px; font-weight:700; }
         .stButton>button[kind="primary"] { background:linear-gradient(90deg,#18a993,#3de0c5); color:#04120f; border:0; }
         [data-testid="stVegaLiteChart"],[data-testid="stPlotlyChart"] { background:transparent; border-radius:10px; overflow:hidden; }
-        @media (max-width:800px) { .topbar{flex-direction:column}.workflow,.case-flow,.scenario-steps{grid-template-columns:1fr}.metric-card{min-height:110px}.analyst-callout{grid-template-columns:1fr;gap:.45rem} }
+        @media (max-width:800px) { .topbar{flex-direction:column}.workflow,.case-flow,.scenario-steps,.explanation-locked,.decision-lab{grid-template-columns:1fr}.decision-lab .decision-arrow{justify-content:center;transform:rotate(90deg)}.metric-card{min-height:110px}.analyst-callout{grid-template-columns:1fr;gap:.45rem} }
         </style>
         """,
         unsafe_allow_html=True,

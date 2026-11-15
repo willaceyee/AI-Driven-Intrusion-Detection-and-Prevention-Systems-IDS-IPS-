@@ -140,6 +140,14 @@ def build_traffic_projection(csv_bytes, result_rows, max_points=MAX_PROJECTION_P
     metadata = {
         "source_rows": len(source),
         "sample_rows": len(projection),
+        "source_class_counts": {
+            str(label): int(count)
+            for label, count in results["prediction"].value_counts().sort_index().items()
+        },
+        "sample_class_counts": {
+            str(label): int(count)
+            for label, count in projection["prediction"].value_counts().sort_index().items()
+        },
         "max_points": max_points,
         "seed": PROJECTION_SEED,
         "method": "PCA after sample-fitted numeric scaling and categorical one-hot encoding",

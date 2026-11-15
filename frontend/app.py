@@ -3,13 +3,23 @@
 from ast import literal_eval
 import json
 from html import escape
-from pathlib import Path
 
 import altair as alt
 import pandas as pd
 import requests
 import streamlit as st
 
+from frontend.detection_intelligence import (
+    INPUT_FEATURES,
+    TEST_SNAPSHOT,
+    VALIDATION_SNAPSHOT,
+    build_upload_context,
+    filter_evaluation_records,
+    make_confusion_matrix_figure,
+    make_metric_comparison_figure,
+    make_outcome_figure,
+    snapshot_from_labeled_records,
+)
 from frontend.soc_theme import apply_soc_theme, render_brand, render_empty_state, render_section_header
 from frontend.traffic_intelligence import (
     CATEGORICAL,
@@ -26,15 +36,6 @@ from frontend.traffic_intelligence import (
 BACKEND = "http://127.0.0.1:8000"
 PREVIEW_ROWS = 100
 SEQUENCE_SEGMENTS = 48
-ROOT = Path(__file__).resolve().parents[1]
-TEST_ASSURANCE = {
-    "f1": 0.8942516540382556,
-    "false_positive_rate": 0.2676756756756757,
-    "true_negative": 27096,
-    "false_positive": 9904,
-    "false_negative": 661,
-    "true_positive": 44671,
-}
 
 
 def clear_results():
@@ -47,6 +48,9 @@ def clear_results():
     st.session_state.pop("investigation_query", None)
     st.session_state.pop("replay_position", None)
     st.session_state.pop("record_linked_notice", None)
+    st.session_state.pop("upload_context", None)
+    st.session_state.pop("upload_context_metadata", None)
+    st.session_state.pop("upload_context_error", None)
 
 
 def link_record_to_workflow(record_id, row_number):
@@ -93,6 +97,12 @@ def run_detection(upload):
         result = response.json()
         st.session_state.prediction_result = result
         st.session_state.result_filename = upload.name
+        try:
+            context, context_metadata = build_upload_context(upload.getvalue(), result["results"])
+            st.session_state.upload_context = context
+            st.session_state.upload_context_metadata = context_metadata
+        except Exception as error:  # Optional analysis must not invalidate genuine backend results.
+            st.session_state.upload_context_error = str(error)
         try:
             with st.spinner("Preparing a bounded feature-similarity projection…"):
                 projection, metadata = build_traffic_projection(upload.getvalue(), result["results"])
@@ -177,14 +187,6 @@ def make_sequence_chart(rows):
     )
 
 
-@st.cache_data(show_spinner=False)
-def load_model_assurance():
-    """Read existing validation evidence without changing evaluation artifacts."""
-    results = pd.read_csv(ROOT / "evaluation/validation_results.csv")
-    selected = results.loc[results["model"] == "Random Forest"]
-    return selected.iloc[0].to_dict() if not selected.empty else None
-
-
 def render_overview(rows, summary):
     total = summary["total"]
     threat_rate = (summary["malicious"] / total * 100) if total else 0
@@ -216,6 +218,95 @@ def render_overview(rows, summary):
         Corroborate decisions with packet, session, host, or identity evidence before escalation.</div></div>""",
         unsafe_allow_html=True,
     )
+
+
+def render_explanation_panel():
+    st.markdown("#### Explainable AI readiness")
+    st.markdown(
+        """<div class="explanation-locked"><div><span>BACKEND SUPPORT REQUIRED</span>
+        <strong>Record-level explanation unavailable</strong></div>
+        <p>The current API returns a class label, not a probability, calibrated score, decision threshold,
+        or validated feature attribution. Input values below are evidence for investigation—not proof that a
+        feature caused this decision.</p></div>""",
+        unsafe_allow_html=True,
+    )
+    st.button("Request validated explanation", disabled=True, key="explanation_disabled")
+    st.caption(
+        "Enable only after the backend supplies model/version identity, score semantics and calibration status, "
+        "explanation method, source-feature mapping, attribution values, and decision-policy metadata."
+    )
+
+
+def render_record_inspector(visible):
+    context = st.session_state.get("upload_context")
+    if context is None or visible.empty:
+        if st.session_state.get("upload_context_error"):
+            st.warning("Source feature inspection is unavailable; detection results remain valid.")
+        return
+
+    candidate_rows = visible.head(PREVIEW_ROWS)["row_number"].astype(int).tolist()
+    selected_row = st.selectbox(
+        "Inspect matching record",
+        candidate_rows,
+        format_func=lambda value: f"CSV row {value:,}",
+        key="investigation_record",
+    )
+    record = context.loc[context["row_number"].eq(selected_row)].iloc[0]
+    st.markdown("#### Selected record evidence")
+    detail_columns = st.columns(3)
+    detail_values = [
+        ("Prediction", record["prediction"].upper(), "Model output"),
+        ("Simulated action", record["simulated_action"].upper(), "Demonstration policy"),
+        ("CSV sequence", f"Row {selected_row:,}", "Not an event timestamp"),
+    ]
+    for column, (label, value, detail) in zip(detail_columns, detail_values):
+        with column:
+            metric_card(label, value, detail, "danger" if value in {"MALICIOUS", "BLOCK"} else "neutral")
+
+    reference_text = "No ground-truth label is available for this uploaded record."
+    if "reference_class" in record.index:
+        outcome = str(record["evaluation_outcome"]).upper()
+        category = ""
+        if "reference_attack_category" in record.index:
+            category = f" · recorded category: {escape(str(record['reference_attack_category']))}"
+        reference_text = (
+            f"Evaluation reference: <strong>{escape(str(record['reference_class']).upper())}</strong> · "
+            f"{escape(outcome)}{category}. These fields were joined after inference and were not model inputs."
+        )
+    st.markdown(f'<div class="evidence-note">{reference_text}</div>', unsafe_allow_html=True)
+
+    projection = st.session_state.get("traffic_projection")
+    represented = projection is not None and projection["row_number"].eq(selected_row).any()
+    if represented:
+        projected = projection.loc[projection["row_number"].eq(selected_row)].iloc[0]
+        st.caption(
+            f"Visualization context: represented in the bounded PCA sample at "
+            f"PC1 {projected['pc1']:.3f}, PC2 {projected['pc2']:.3f}, PC3 {projected['pc3']:.3f}. "
+            "Coordinates express transformed-feature similarity only."
+        )
+    else:
+        st.caption(
+            "Visualization context: this record is not in the bounded PCA sample. It remains available for "
+            "investigation and replay; no topology or communication relationship is implied."
+        )
+
+    with st.expander("View all 42 model input features"):
+        feature_table = pd.DataFrame({
+            "feature": INPUT_FEATURES,
+            "uploaded_value": [str(record[feature]) for feature in INPUT_FEATURES],
+        })
+        st.dataframe(feature_table, hide_index=True, width="stretch")
+        st.caption(
+            "These are the genuine uploaded inputs used by the existing pipeline. Display order is descriptive; "
+            "it is not a feature-importance ranking."
+        )
+    st.button(
+        "Prepare this record for replay",
+        key="investigation_replay_handoff",
+        on_click=link_record_to_workflow,
+        args=(record["record_id"], selected_row),
+    )
+    render_explanation_panel()
 
 
 def render_investigation(rows, result):
@@ -259,6 +350,7 @@ def render_investigation(rows, result):
             "simulated_action": st.column_config.TextColumn("Simulated action"),
         },
     )
+    render_record_inspector(visible)
     st.markdown("#### Simulated containment queue")
     if result["summary"]["malicious"]:
         st.warning(
@@ -309,6 +401,26 @@ def render_traffic_intelligence():
     st.caption(
         f"Showing a deterministic, class-aware sample of {metadata['sample_rows']:,} from "
         f"{metadata['source_rows']:,} uploaded records · seed {metadata['seed']} · maximum {metadata['max_points']:,}."
+    )
+    ratios = list(variance[:3]) + [0.0] * (3 - len(variance[:3]))
+    representation_columns = st.columns(4)
+    representation_values = [
+        ("Records represented", f"{metadata['sample_rows']:,}", f"of {metadata['source_rows']:,} uploaded"),
+        ("PC1 variance", f"{ratios[0]:.1%}", "Sample-fitted PCA"),
+        ("PC2 variance", f"{ratios[1]:.1%}", "Sample-fitted PCA"),
+        ("PC3 variance", f"{ratios[2]:.1%}", "Sample-fitted PCA"),
+    ]
+    for column, (label, value, detail) in zip(representation_columns, representation_values):
+        with column:
+            metric_card(label, value, detail)
+    source_classes = metadata["source_class_counts"]
+    sample_classes = metadata["sample_class_counts"]
+    st.info(
+        "Sampling disclosure: the deterministic sample is allocated across predicted classes so both model "
+        f"outcomes remain visible (source normal {source_classes.get('normal', 0):,}, malicious "
+        f"{source_classes.get('malicious', 0):,}; sample normal {sample_classes.get('normal', 0):,}, malicious "
+        f"{sample_classes.get('malicious', 0):,}). Sampling and PCA can compress rare patterns and distort visual "
+        "density; use the complete exports and investigation table for record counts."
     )
 
     control_columns = st.columns(3)
@@ -447,6 +559,147 @@ def render_scenario_globe():
     st.markdown(f'<div class="scenario-steps">{steps}</div>', unsafe_allow_html=True)
 
 
+def render_detection_analysis():
+    render_section_header(
+        "Detection intelligence",
+        "Examine held-out model errors and, when labels exist, audit the current upload after prediction.",
+        "EVALUATE",
+    )
+    st.markdown(
+        """<div class="analyst-callout compact"><div class="callout-label">EVALUATION BOUNDARY</div>
+        <div><strong>Evaluation outcomes require known reference labels.</strong> Validation and reserved-test
+        results below are historical held-out evaluations. They are not accuracy measurements for a new,
+        unlabelled upload and do not establish effectiveness on live network traffic.</div></div>""",
+        unsafe_allow_html=True,
+    )
+    split_name = st.radio(
+        "Evidence split", ["Validation", "Reserved test"], horizontal=True, key="analysis_split"
+    )
+    snapshot = VALIDATION_SNAPSHOT if split_name == "Validation" else TEST_SNAPSHOT
+    metric_columns = st.columns(4)
+    metric_values = [
+        ("Precision", snapshot.precision, "Flagged attacks that were attacks"),
+        ("Recall", snapshot.recall, "Recorded attacks detected"),
+        ("Attack F1", snapshot.f1, "Precision/recall balance"),
+        ("False-positive rate", snapshot.false_positive_rate, "Normal records flagged"),
+    ]
+    for column, (label, value, detail) in zip(metric_columns, metric_values):
+        with column:
+            metric_card(label, f"{value:.2%}", detail, "warning" if label == "False-positive rate" else "neutral")
+
+    chart_columns = st.columns(2, gap="large")
+    with chart_columns[0]:
+        st.markdown(f"#### {snapshot.name} confusion matrix")
+        st.caption(f"{snapshot.total:,} records · {snapshot.role}")
+        st.plotly_chart(
+            make_confusion_matrix_figure(snapshot), width="stretch", config={"displaylogo": False}
+        )
+    with chart_columns[1]:
+        st.markdown("#### Validation versus reserved test")
+        st.caption("Separate splits shown side by side; the reserved test was not used for model selection.")
+        st.plotly_chart(
+            make_metric_comparison_figure(), width="stretch", config={"displaylogo": False}
+        )
+
+    st.warning(
+        f"False-blocking consequence: {snapshot.false_positive:,} genuinely normal records were classified as "
+        f"malicious on the {snapshot.name.lower()} split. In this prototype that produces only a simulated block. "
+        "In a real system, an equivalent prevention policy could interrupt legitimate users or services, so a "
+        "detection label must not automatically become an enforcement decision without reviewed policy evidence."
+    )
+    st.caption(
+        f"False negatives: {snapshot.false_negative:,} recorded attacks were predicted normal on this split. "
+        "Reducing one error type can increase the other; policy choices require validated scores and explicit costs."
+    )
+
+    st.markdown("### Current upload label audit")
+    context = st.session_state.get("upload_context")
+    context_metadata = st.session_state.get("upload_context_metadata") or {}
+    if context is None:
+        st.info("Source-record context is unavailable. Historical evaluation evidence above remains available.")
+    elif not context_metadata.get("has_ground_truth"):
+        if context_metadata.get("label_warning"):
+            st.warning(context_metadata["label_warning"])
+        else:
+            st.info(
+                "This upload has no verified binary label column. Predictions can be investigated and exported, "
+                "but accuracy, false positives and false negatives cannot be calculated for it."
+            )
+    else:
+        current = snapshot_from_labeled_records(context)
+        st.success(
+            "A verified binary label column is available. It was joined only after the backend returned predictions; "
+            "the backend's existing feature validation excluded label and attack_cat from model inputs."
+        )
+        current_columns = st.columns(4)
+        for column, (label, value) in zip(
+            current_columns,
+            [
+                ("Current precision", current.precision),
+                ("Current recall", current.recall),
+                ("Current attack F1", current.f1),
+                ("Current FPR", current.false_positive_rate),
+            ],
+        ):
+            with column:
+                metric_card(label, f"{value:.2%}", "Labelled upload audit")
+        st.plotly_chart(make_outcome_figure(context), width="stretch", config={"displaylogo": False})
+
+        filter_columns = st.columns(2)
+        with filter_columns[0]:
+            outcome_filter = st.selectbox(
+                "Evaluation outcome",
+                ["Errors only", "False positive", "False negative", "True positive", "True negative", "All outcomes"],
+                key="evaluation_outcome_filter",
+            )
+        selected_categories = None
+        with filter_columns[1]:
+            if context_metadata.get("has_attack_category"):
+                categories = sorted(context["reference_attack_category"].astype(str).unique())
+                selected_categories = st.multiselect(
+                    "Recorded attack category", categories, key="evaluation_category_filter"
+                )
+            else:
+                st.caption("No recorded attack-category field is available for filtering.")
+        mistakes = filter_evaluation_records(context, outcome_filter, selected_categories)
+        st.caption(f"{len(mistakes):,} records match this post-prediction audit filter; preview limited to {PREVIEW_ROWS}.")
+        display_columns = [
+            "record_id", "row_number", "reference_class", "prediction", "evaluation_outcome", "simulated_action"
+        ]
+        if "reference_attack_category" in mistakes.columns:
+            display_columns.append("reference_attack_category")
+        st.dataframe(mistakes[display_columns].head(PREVIEW_ROWS), hide_index=True, width="stretch")
+        if not mistakes.empty:
+            audit_row = st.selectbox(
+                "Send audit record to investigation and replay",
+                mistakes.head(PREVIEW_ROWS)["row_number"].astype(int).tolist(),
+                format_func=lambda value: f"CSV row {value:,}",
+                key="audit_record_handoff",
+            )
+            audit_record = context.loc[context["row_number"].eq(audit_row)].iloc[0]
+            st.button(
+                "Prepare selected audit record",
+                key="audit_handoff_button",
+                on_click=link_record_to_workflow,
+                args=(audit_record["record_id"], audit_row),
+            )
+
+    st.markdown("### Prevention Decision Lab readiness")
+    st.markdown(
+        """<div class="decision-lab"><div><span>DETECTION</span><strong>Current capability</strong>
+        <p>Binary class labels from the unchanged Random Forest API.</p></div>
+        <div class="decision-arrow">→</div><div><span>PREVENTION</span><strong>Not yet enabled</strong>
+        <p>Requires genuine score semantics, calibration evidence, threshold metadata and an approved cost policy.</p>
+        </div></div>""",
+        unsafe_allow_html=True,
+    )
+    st.button("Compare response policies", disabled=True, key="policy_lab_disabled")
+    st.caption(
+        "No threshold control is presented as operational. Candidate policies must be selected using training/validation "
+        "or a dedicated calibration split, then evaluated once on untouched held-out data—not tuned against the reserved test set."
+    )
+
+
 def render_replay(rows):
     render_section_header(
         "Attack replay",
@@ -475,14 +728,14 @@ def render_exports(rows, result):
         "Separate established validation evidence from the current upload, then export the complete result set.",
         "ASSURE",
     )
-    assurance = load_model_assurance()
+    assurance = VALIDATION_SNAPSHOT
     if assurance:
         assurance_columns = st.columns(4)
         assurance_values = [
-            ("Validation attack F1", assurance["f1"], "Model selection split"),
-            ("Validation FPR", assurance["false_positive_rate"], "1,004 / 11,200 normal"),
-            ("Test attack F1", TEST_ASSURANCE["f1"], "Reserved test set"),
-            ("Test FPR", TEST_ASSURANCE["false_positive_rate"], "9,904 / 37,000 normal"),
+            ("Validation attack F1", assurance.f1, "Model selection split"),
+            ("Validation FPR", assurance.false_positive_rate, "1,004 / 11,200 normal"),
+            ("Test attack F1", TEST_SNAPSHOT.f1, "Reserved test set"),
+            ("Test FPR", TEST_SNAPSHOT.false_positive_rate, "9,904 / 37,000 normal"),
         ]
         for column, (label, value, detail) in zip(assurance_columns, assurance_values):
             with column:
@@ -553,10 +806,11 @@ else:
         <div><b>04 RESPOND</b><span>Review simulated actions</span></div></div>""",
         unsafe_allow_html=True,
     )
-    overview_tab, investigate_tab, traffic_tab, globe_tab, replay_tab, export_tab = st.tabs(
+    overview_tab, investigate_tab, analysis_tab, traffic_tab, globe_tab, replay_tab, export_tab = st.tabs(
         [
             "Command overview",
             "Incident investigation",
+            "Detection analysis",
             "Traffic intelligence",
             "Scenario globe",
             "Attack replay",
@@ -567,6 +821,8 @@ else:
         render_overview(rows, result["summary"])
     with investigate_tab:
         render_investigation(rows, result)
+    with analysis_tab:
+        render_detection_analysis()
     with traffic_tab:
         render_traffic_intelligence()
     with globe_tab:

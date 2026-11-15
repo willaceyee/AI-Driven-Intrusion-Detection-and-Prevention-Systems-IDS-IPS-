@@ -43,6 +43,8 @@ def check():
     repeat, repeat_metadata = build_traffic_projection(csv_bytes, result_rows, max_points=600)
     assert len(projection) == 600 == metadata["sample_rows"]
     assert metadata == repeat_metadata and metadata["source_rows"] == 2_000
+    assert sum(metadata["source_class_counts"].values()) == 2_000
+    assert sum(metadata["sample_class_counts"].values()) == 600
     assert np.allclose(projection[["pc1", "pc2", "pc3"]], repeat[["pc1", "pc2", "pc3"]])
     assert set(projection.prediction) == {"normal", "malicious"}
 
