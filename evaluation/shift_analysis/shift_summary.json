@@ -1,0 +1,59 @@
+{
+  "purpose": "Diagnostic only; production model and threshold unchanged",
+  "test_confusion_matrix_reproduced": {
+    "tn": 27096,
+    "fp": 9904,
+    "fn": 661,
+    "tp": 44671
+  },
+  "validation_fp": 1004,
+  "decomposition": [
+    {
+      "grouping": "combo",
+      "validation_fpr": 0.08964285714285715,
+      "test_fpr": 0.2676756756756757,
+      "gap": 0.17803281853281855,
+      "counterfactual_test_fpr_with_validation_rates": 0.11174121408912642,
+      "mix_effect": 0.022098356946269285,
+      "within_combination_effect": 0.15593446158654928,
+      "pooled_rate_for_small_combinations": 0.03225806451612903,
+      "test_normals_with_own_validation_rate": 0.9944864864864865,
+      "reconstructed_validation_fpr": 0.08964285714285714
+    },
+    {
+      "grouping": "sttl_value",
+      "validation_fpr": 0.08964285714285715,
+      "test_fpr": 0.2676756756756757,
+      "gap": 0.17803281853281855,
+      "counterfactual_test_fpr_with_validation_rates": 0.19201843421560652,
+      "mix_effect": 0.10237557707274939,
+      "within_combination_effect": 0.07565724146006916,
+      "pooled_rate_for_small_combinations": 0.041666666666666664,
+      "test_normals_with_own_validation_rate": 0.9964054054054055,
+      "reconstructed_validation_fpr": 0.08964285714285714
+    },
+    {
+      "grouping": "combo_sttl",
+      "validation_fpr": 0.08964285714285715,
+      "test_fpr": 0.2676756756756757,
+      "gap": 0.17803281853281855,
+      "counterfactual_test_fpr_with_validation_rates": 0.18446300304846724,
+      "mix_effect": 0.0948201459056101,
+      "within_combination_effect": 0.08321267262720844,
+      "pooled_rate_for_small_combinations": 0.11594202898550725,
+      "test_normals_with_own_validation_rate": 0.9910000000000001,
+      "reconstructed_validation_fpr": 0.08964285714285715
+    }
+  ],
+  "overlap": {
+    "test_records_in_conflicting_label_groups_within_test": 14,
+    "test_normal_duplicate_records": 2794
+  },
+  "notes": [
+    "KS p-values are omitted: with tens of thousands of records every difference is 'significant'.",
+    "PSI uses up to 10 quantile bins of training normals; discrete features get fewer bins.",
+    "PSI thresholds 0.1/0.25 are credit-scoring rules of thumb, not validated for NIDS data.",
+    "KS and PSI are univariate and miss shifts in feature interactions.",
+    "Row matching uses 64-bit hashes of all 42 features (collision risk negligible)."
+  ]
+}

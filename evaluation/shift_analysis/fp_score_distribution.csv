@@ -1,0 +1,5 @@
+dataset,outcome,records,q10,q25,q50,q75,q90,share_score_gt_0.6,share_score_gt_0.8,share_score_gt_0.9
+validation,false_positive,1004,0.53,0.57,0.66,0.78,0.87,0.650398406374502,0.21912350597609562,0.0647410358565737
+validation,true_negative,10196,0.0,0.0,0.0,0.0,0.21,0.0,0.0,0.0
+test,false_positive,9904,0.54,0.6,0.71,0.83,0.91,0.7476777059773829,0.296748788368336,0.11197495961227787
+test,true_negative,27096,0.0,0.0,0.0,0.03,0.39,0.0,0.0,0.0
