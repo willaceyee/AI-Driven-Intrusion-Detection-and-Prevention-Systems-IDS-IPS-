@@ -1,0 +1,17 @@
+pattern,bucket,test_normals,share_of_test_normals,test_fp,test_fpr
+combination_support,absent_from_training,3,8.108108108108108e-05,0,0.0
+combination_support,no_training_normals,20,0.0005405405405405405,2,0.1
+combination_support,rare_<30_training_normals,82,0.0022162162162162164,35,0.4268292682926829
+combination_support,well_supported,36895,0.9971621621621621,9867,0.2674346117360076
+unseen_proto_value,none,0,0.0,0,
+unseen_service_value,none,0,0.0,0,
+unseen_state_value,ACC,2,5.4054054054054054e-05,0,0.0
+any_numeric_outside_training_range,any,51,0.0013783783783783783,2,0.0392156862745098
+numeric_outside_training_range,sinpkt,2,5.4054054054054054e-05,0,0.0
+numeric_outside_training_range,dinpkt,2,5.4054054054054054e-05,0,0.0
+numeric_outside_training_range,sjit,2,5.4054054054054054e-05,0,0.0
+numeric_outside_training_range,djit,2,5.4054054054054054e-05,2,1.0
+numeric_outside_training_range,tcprtt,22,0.0005945945945945946,0,0.0
+numeric_outside_training_range,synack,22,0.0005945945945945946,0,0.0
+numeric_outside_training_range,ackdat,4,0.00010810810810810811,0,0.0
+numeric_outside_training_range,dmean,12,0.0003243243243243243,0,0.0

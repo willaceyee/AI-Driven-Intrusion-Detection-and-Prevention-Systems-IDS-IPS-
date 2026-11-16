@@ -233,7 +233,7 @@ The command writes `evaluation/validation_results.csv` and `evaluation/model_sel
 
 The selected preprocessing and classifier are saved together in `models/artifacts/selected_pipeline.joblib`, which is excluded from Git. The script verifies that reloading reproduces predictions on 100 validation records. Future backend code must validate uploaded features with `validate_features` before calling this pipeline. Only load trusted model artifacts.
 
-The official test dataset remains reserved for final evaluation. Validation scores are used for model selection and should be labelled accordingly in the report. Re-running training replaces these reports and the selected artifact.
+The official test dataset was reserved for final evaluation. It has since been used once for the final baseline evaluation and, diagnostically, in the Priority 1 dataset-shift analysis; it was never used to select models or thresholds. Validation scores are used for model selection and should be labelled accordingly in the report. Re-running training replaces these reports and the selected artifact.
 
 ### Initial validation results
 
@@ -243,7 +243,7 @@ The official test dataset remains reserved for final evaluation. Validation scor
 | Decision Tree | 95.91% | 95.08% | 95.49% | 8.65% | 0.117 s |
 | Random Forest | 95.86% | 97.41% | 96.63% | 8.96% | 0.456 s |
 
-Each prediction timing covers all 35,069 validation records. Random Forest was selected by validation F1. It produced 1,004 false positives among 11,200 normal records and missed 618 of 23,869 attack records. Decision Tree had a slightly lower false-positive rate, while Random Forest recovered more attacks. The saved Random Forest remains fitted on the 140,272-row training partition. These baseline results have not been evaluated on the official test set and do not establish performance on live traffic.
+Each prediction timing covers all 35,069 validation records. Random Forest was selected by validation F1. It produced 1,004 false positives among 11,200 normal records and missed 618 of 23,869 attack records. Decision Tree had a slightly lower false-positive rate, while Random Forest recovered more attacks. The saved Random Forest remains fitted on the 140,272-row training partition. These are validation results; the official test evaluation is reported in [Final baseline test evaluation](#final-baseline-test-evaluation). Neither establishes performance on live traffic.
 
 ## Running the detection backend
 
@@ -353,10 +353,60 @@ The overlap check excludes 6,514 test rows whose 42 input values occur in the ac
 
 Median prediction time was 1.071 seconds for all 82,332 records over three warm runs, including preprocessing and excluding CSV loading, validation, HTTP and dashboard rendering. This is batch timing on the leader's computer.
 
-The Random Forest detected most attacks but incorrectly flagged more than one quarter of normal test records. Its validation F1 was 96.63%, compared with 89.43% on the full test set. This gap limits claims about generalisation. The similar false-positive rate after removing training overlap suggests exact overlap alone does not explain the false alarms. Identifying their cause requires further investigation.
+The Random Forest detected most attacks but incorrectly flagged more than one quarter of normal test records. Its validation F1 was 96.63%, compared with 89.43% on the full test set. This gap limits claims about generalisation. The similar false-positive rate after removing training overlap suggests exact overlap alone does not explain the false alarms. Priority 1 investigated their likely causes; see [Research Findings and Model Limitations](#research-findings-and-model-limitations).
 
 Fuzzers accounted for 604 of the 661 missed attacks, with a detection rate of 90.04%. All 44 Worms records were detected, but that small sample provides limited evidence. The category report measures binary attack detection within each true category; the model does not predict individual attack types. For the Normal category, its attack-prediction rate is the false-positive rate.
 
 The simulated prevention demonstration inherits these errors: a false-positive prediction would create an incorrect simulated block entry. These baseline results support reporting a functional prototype with substantial false-alarm limitations. Future experiments must document their development decisions and use a new untouched evaluation set for fresh confirmatory claims after these test results have informed development.
 
 Outputs are `evaluation/test_results.csv`, `evaluation/test_category_results.csv`, `evaluation/test_evaluation.json` and `evaluation/test_confusion_matrices.png`. Metric totals and category totals were checked, F1 was independently recalculated from confusion counts, and the figure was visually inspected. The selected model artifact is unchanged by evaluation.
+
+## Research Findings and Model Limitations
+
+Priority 1 investigated the high official-test false-positive rate. The full report, with every figure and source file, is [docs/priority1_research_summary.md](docs/priority1_research_summary.md).
+
+**Decision:** the original 42-feature Random Forest is retained, with the default classification threshold of 0.50. The research added analysis scripts, reports and documentation only. The saved model, preprocessing, backend and dashboard behaviour are unchanged.
+
+| Official UNSW-NB15 test metric | Value |
+| --- | ---: |
+| Accuracy | 87.17% |
+| Precision | 81.85% |
+| Recall | 98.54% |
+| F1-score | 89.43% |
+| False-positive rate | 26.77% |
+
+**What was investigated:**
+- false-positive characteristics and traffic distributions
+- prediction confidence and threshold sensitivity
+- permutation feature importance
+- grouped multi-seed robustness experiments with a random-seed noise control
+- dataset-shift analysis across the training, validation and official test data
+
+**Alternatives that were rejected:**
+- **Threshold 0.60.** It lowered internal FPR from 10.06% to 6.93%, but missed 333 more attacks. Fuzzers recall fell from 85.83% to 76.16% and Analysis recall from 90.82% to 82.95%. It was not deployed.
+- **Removing `dttl`.** FPR was lower on only 1 of 5 seeds, and on average it rose by 0.14 percentage points. This did not pass the predefined multi-seed improvement criteria.
+- **Removing all three TTL features (`sttl`, `dttl`, `ct_state_ttl`).** False positives on normal traffic with high TTL values fell on only 2 of 5 seeds, and on average rose slightly, within random-seed variation. This also did not pass the predefined criteria.
+
+**Dataset shift:**
+- The validation data is distributed like the training data: the largest KS statistic is 0.016. The official test data is not: its largest KS statistic is 0.27.
+- Test normal records more often carry TTL values that mostly belong to attacks in training. For example, records with `sttl=254` are 20% of training normals but 41% of test normals, and they produce 8,886 of the 9,904 test false positives.
+- These TTL-related changes are **associated** with the high test false-positive rate, but they have **not** been shown to be the sole cause:
+  - removing the TTL features did not reduce false positives internally
+  - normal traffic within the same TTL groups is also classified worse on the test set
+
+Figures are in [`evaluation/shift_analysis/figures/`](evaluation/shift_analysis/figures/).
+
+**Limitations:**
+- **The high official-test FPR remains unresolved.** More than one in four normal test records is flagged as malicious, and simulated blocking inherits these errors.
+- **Prevention is simulated.** The block list does not enforce real firewall rules or block network traffic.
+- **The evaluation data has been reused.** The validation set and internal evaluation partitions were used repeatedly during development. The official test set was inspected for the baseline evaluation and the shift diagnostics. It was never used to select models or thresholds, but it is no longer untouched.
+- **One dataset only.** All results come from UNSW-NB15, so generalisation to live or different networks is not established.
+- **Scores are not calibrated probabilities.** Random Forest attack scores are vote fractions, not calibrated probabilities of an attack.
+
+Reproduce the Priority 1 experiments from the repository root:
+
+```powershell
+python -m evaluation.experiment_multiseed
+python -m evaluation.experiment_ttl_free_multiseed
+python -m evaluation.analyze_dataset_shift
+```

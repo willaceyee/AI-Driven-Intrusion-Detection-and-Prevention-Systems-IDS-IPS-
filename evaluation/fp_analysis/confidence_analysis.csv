@@ -1,0 +1,5 @@
+group,train_normal,train_attack,val_fp,val_tn,val_attacks,val_attack_recall,fp_score_median,tn_score_median
+tcp/-/FIN,20101,15169,604,4489,3822,0.8958660387231816,0.63,0.0
+udp/-/INT,2349,7426,224,321,1723,0.9367382472431804,0.71,0.2475
+tcp/http/FIN,4266,10626,120,962,2728,0.969208211143695,0.73,0.0
+tcp/ftp/FIN,958,1724,51,208,478,0.9518828451882845,0.64,0.0

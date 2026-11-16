@@ -1,0 +1,61 @@
+{
+  "purpose": "Robustness check of TTL-free model vs 42-feature baseline; not an independent test",
+  "data": "data/processed/train.csv only; official test set not read",
+  "removed_features": [
+    "sttl",
+    "dttl",
+    "ct_state_ttl"
+  ],
+  "slice": "normal records with sttl in [62, 254]",
+  "split_seeds": [
+    42,
+    7,
+    123,
+    2024,
+    31337
+  ],
+  "control_model_seed_offset": 1000,
+  "threshold": 0.5,
+  "ci_note": "t-based 95% CIs are exploratory: repeated splits share data",
+  "criteria": {
+    "C1": "FPR on normals with sttl in {62, 254} decreases on >= 4 of 5 seeds AND the mean decrease exceeds the noise-control variation, defined as mean |slice FPR(baseline_alt) - slice FPR(baseline)| across seeds",
+    "C2": "mean overall attack recall decreases by <= 0.5 percentage points",
+    "C3": "mean Fuzzers recall and mean Analysis recall each decrease by <= 2 percentage points",
+    "C4": "mean overall FPR increases by <= 0.5 percentage points"
+  },
+  "checks": {
+    "C1": {
+      "seeds_decreased": 2,
+      "mean_slice_fpr_reduction": -0.00138947853558834,
+      "noise_control_variation": 0.004883148089071187,
+      "pass": false
+    },
+    "C2": {
+      "mean_recall_drop": 0.0001675814913074669,
+      "seeds_within_limit": 5,
+      "pass": true
+    },
+    "C3": {
+      "mean_fuzzers_drop": -0.0003407825979337087,
+      "mean_analysis_drop": 0.001992854140395117,
+      "seeds_within_limit": 5,
+      "pass": true
+    },
+    "C4": {
+      "mean_fpr_increase": 0.0005580357142857178,
+      "seeds_within_limit": 5,
+      "pass": true
+    }
+  },
+  "worst_seed": {
+    "worst_recall_drop": 0.0013616842987325128,
+    "worst_fuzzers_recall_drop": 0.007947477539737458,
+    "worst_analysis_recall_drop": 0.00983606557377048,
+    "worst_overall_fpr_increase": 0.0017857142857142932,
+    "worst_slice_fpr_change": 0.006986492780624132
+  },
+  "ttl_free_advances": false,
+  "python": "3.13.18",
+  "scikit_learn": "1.9.1",
+  "pandas": "3.0.5"
+}

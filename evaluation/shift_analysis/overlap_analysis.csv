@@ -1,0 +1,9 @@
+test_label,match_status,records,share_of_label,predicted_attack,predicted_attack_rate
+normal,not_in_training,35821,0.9681351351351352,9518,0.26571005834566314
+normal,training_normal_only,766,0.0207027027027027,0,0.0
+normal,training_attack_only,224,0.006054054054054054,224,1.0
+normal,training_both_labels,189,0.0051081081081081085,162,0.8571428571428571
+attack,not_in_training,39997,0.8823127150798553,39351,0.9838487886591495
+attack,training_normal_only,15,0.00033089208506132534,0,0.0
+attack,training_attack_only,5315,0.11724609547339628,5315,1.0
+attack,training_both_labels,5,0.00011029736168710845,5,1.0
