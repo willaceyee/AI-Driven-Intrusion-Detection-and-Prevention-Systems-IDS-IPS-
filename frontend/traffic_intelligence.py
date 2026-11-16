@@ -183,7 +183,7 @@ def get_scenario(scenario_id):
     raise KeyError(f"Unknown threat scenario: {scenario_id}")
 
 
-def make_projection_figure(projection, dimensions=3):
+def make_projection_figure(projection, dimensions=3, height=560):
     """Create either the primary 3D view or its 2D accessibility fallback."""
     if dimensions not in {2, 3}:
         raise ValueError("Projection dimensions must be 2 or 3.")
@@ -224,7 +224,7 @@ def make_projection_figure(projection, dimensions=3):
         figure.update_xaxes(title="PC1 · feature variation", gridcolor="#213044", zerolinecolor="#33465e")
         figure.update_yaxes(title="PC2 · feature variation", gridcolor="#213044", zerolinecolor="#33465e")
     figure.update_layout(
-        height=560,
+        height=height,
         margin={"l": 10, "r": 10, "t": 25, "b": 10},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -235,7 +235,7 @@ def make_projection_figure(projection, dimensions=3):
     return figure
 
 
-def make_scenario_globe(scenario):
+def make_scenario_globe(scenario, height=560):
     """Create a globe for one explicitly synthetic, deterministic exercise."""
     figure = go.Figure()
     figure.add_trace(go.Scattergeo(
@@ -271,7 +271,7 @@ def make_scenario_globe(scenario):
         bgcolor="rgba(0,0,0,0)",
     )
     figure.update_layout(
-        height=560,
+        height=height,
         margin={"l": 0, "r": 0, "t": 10, "b": 0},
         paper_bgcolor="rgba(0,0,0,0)",
         font={"color": "#a7b5c6"},

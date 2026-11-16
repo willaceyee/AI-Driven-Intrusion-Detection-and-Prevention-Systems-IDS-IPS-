@@ -44,11 +44,12 @@ def check():
             VALIDATION_SNAPSHOT.false_negative,
             VALIDATION_SNAPSHOT.true_positive,
         )
+        app.radio[0].set_value("Model & Reports").run()
         csv_call = next(call for call in download.call_args_list if call.kwargs["file_name"] == "detection_results.csv")
         exported = pd.read_csv(BytesIO(csv_call.args[1]))
         pd.testing.assert_frame_equal(exported, pd.DataFrame(result["results"]))
+        app.radio[0].set_value("Incident Investigation").run()
         assert len(app.dataframe[0].value) == 100
-        assert len(app.dataframe[1].value) <= 100
         for choice in ["Malicious", "Normal"]:
             app.selectbox[0].select(choice).run()
             assert not app.exception

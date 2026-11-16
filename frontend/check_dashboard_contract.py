@@ -50,16 +50,20 @@ def check():
         app = AppTest.from_file(str(ROOT / "frontend/app.py")).run(timeout=15)
         detection_button(app).click().run(timeout=15)
         assert not app.exception and not app.error
-        assert len(app.tabs) == 7 and len(app.slider) == 1
-        assert len(app.dataframe[0].value) == 3
-        assert len(app.dataframe[1].value) == 2
+        assert len(app.tabs) == 0 and app.radio[0].value == "Command Overview"
+        assert len(app.dataframe[0].value) == 2
 
-        assert len(app.selectbox) >= 3
+        app.radio[0].set_value("Incident Investigation").run(timeout=15)
+        assert len(app.selectbox) >= 2
+        assert len(app.dataframe[0].value) == 3
         app.selectbox[0].select("Malicious").run(timeout=15)
         assert app.dataframe[0].value.prediction.eq("malicious").all()
         app.selectbox[1].select("Block").run(timeout=15)
         assert app.dataframe[0].value.simulated_action.eq("block").all()
 
+        app.radio[0].set_value("Prevention & Replay").run(timeout=15)
+        assert len(app.slider) == 1 and len(app.dataframe[0].value) == 2
+        app.radio[0].set_value("Model & Reports").run(timeout=15)
         csv_call = next(call for call in download.call_args_list if call.kwargs["file_name"] == "detection_results.csv")
         exported = pd.read_csv(BytesIO(csv_call.args[1]))
         pd.testing.assert_frame_equal(exported, pd.DataFrame(result["results"]))
