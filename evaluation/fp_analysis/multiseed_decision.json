@@ -1,0 +1,48 @@
+{
+  "purpose": "Robustness check of without_dttl vs 42-feature baseline; not an independent test",
+  "data": "data/processed/train.csv only",
+  "split_seeds": [
+    42,
+    7,
+    123,
+    2024,
+    31337
+  ],
+  "control_model_seed_offset": 1000,
+  "threshold": 0.5,
+  "ci_note": "t-based 95% CIs are exploratory: repeated splits share data and are not independent",
+  "decision_rule": {
+    "C1": "without_dttl FPR lower than baseline on at least 4 of 5 seeds",
+    "C2": "mean FPR reduction > noise-control spread, defined as mean |FPR(baseline_alt) - FPR(baseline)| across seeds",
+    "C3": "mean overall recall drop <= 0.2 percentage points",
+    "C4": "mean recall drop <= 1.0 percentage point for each of Fuzzers and Analysis"
+  },
+  "checks": {
+    "C1": {
+      "value": 1,
+      "required": ">= 4 of 5",
+      "pass": false
+    },
+    "C2": {
+      "value": -0.0013839285714285748,
+      "noise_spread": 0.001205357142857147,
+      "required": "mean FPR reduction > noise spread",
+      "pass": false
+    },
+    "C3": {
+      "value": 0.00024091118174378589,
+      "required": "<= 0.002",
+      "pass": true
+    },
+    "C4": {
+      "fuzzers": 0.0005708744569916213,
+      "analysis": 0.00446939018296888,
+      "required": "each <= 0.01",
+      "pass": true
+    }
+  },
+  "without_dttl_advances": false,
+  "python": "3.13.18",
+  "scikit_learn": "1.9.1",
+  "pandas": "3.0.5"
+}
