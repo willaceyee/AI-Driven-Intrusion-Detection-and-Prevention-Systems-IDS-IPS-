@@ -411,7 +411,7 @@ def make_figures(data, results, totals):
     axis.set_xlabel("False-positive rate (%)", fontsize=8)
     axis.legend(frameon=False, fontsize=8, ncol=2,
                 loc="lower right", bbox_to_anchor=(1, 1.0))
-    axis.set_title(f"Five groups cause {top['test_fp'].sum() / normals(data['test'])['pred'].sum():.0%} "
+    axis.set_title(f"Five groups account for {top['test_fp'].sum() / normals(data['test'])['pred'].sum():.0%} "
                    "of official-test false positives", fontsize=10, loc="left", pad=18)
     style(axis)
     save(fig, "fig3_top_fp_groups.png")

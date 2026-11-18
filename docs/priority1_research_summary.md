@@ -42,7 +42,7 @@ Scripts: `evaluation/analyze_false_positives.py`, `analyze_fp_categories.py`, `a
 
   All four contain both normal and attack records in training, so these categories alone can't separate the classes.
 - **Score confidence.** False positives in these groups have median attack scores of 0.63–0.73, clearly above 0.50 (`confidence_analysis.csv`).
-- **Permutation importance.** `dttl`, `sttl`, `service` and the connection-count features matter most for both recall and FPR (`feature_importance.csv`).
+- **Permutation importance** (production model on validation, 3 repeats; `feature_importance.csv`). For attack recall, `dttl`, `sttl`, `ackdat` and `ct_state_ttl` rank highest. For FPR, `service` and the connection-count features `ct_dst_src_ltm` and `ct_srv_dst` rank highest. Permutation importance is unreliable for correlated features such as the three TTL features, and high importance does not mean a feature is necessary (see section 6).
 
 ## 3. Threshold 0.60: rejected for deployment
 
@@ -61,9 +61,11 @@ Raising the threshold lowers FPR on validation, but recall falls with it (`thres
 - **Policy:** minimise FPR while keeping recall at or above 95%. It selected 0.60.
 - **Internal result:** FPR fell from 10.06% to 6.93%, but recall fell from 97.56% to 95.82%. That is **333 more missed attacks** (`threshold_internal_evaluation.csv`).
 
-**Why it was rejected:** the losses fall on the weakest categories (`threshold_attack_category_analysis.csv`):
+**Why it was rejected:** on the internal evaluation partition, the losses fall on the weakest categories (`threshold_attack_category_analysis.csv`):
 - **Fuzzers:** recall fell from 85.83% to 76.16%; 280 of the 333 extra misses are Fuzzers.
 - **Analysis:** recall fell from 90.82% to 82.95%.
+
+These category figures are internal evidence: an experimental model on a partition of `train.csv`. Threshold 0.60 was never evaluated on the official test set. There, the deployed model at 0.50 detects 90.04% of Fuzzers and 99.85% of Analysis records (`test_category_results.csv`). Fuzzers is weak on both datasets; Analysis is weak only internally.
 
 ## 4. `dttl` ablation and multi-seed robustness check: rejected
 
@@ -97,13 +99,20 @@ The production model only scored validation and the official test set here. It r
    - So the validation FPR only describes data like the training data (`numeric_shift.csv`, `fig4_numeric_shift_ks.png`).
 2. **Splitting the 17.8-point FPR gap** (`fpr_decomposition.csv`, `fig1_fpr_gap_decomposition.png`).
 
-   "Traffic mix" means more test traffic falls into groups that are already hard. "Within group" means the same group is classified worse on the test set.
+   "Traffic mix" means more test traffic falls into groups that are already hard. "Within group" means the same group is classified worse on the test set. The table uses validation rates and shares as the reference.
 
    | Grouped by | Traffic mix | Within group |
    |---|---:|---:|
    | protocol/service/state | 2.2 pp | 15.6 pp |
    | `sttl` value | **10.2 pp** | 7.6 pp |
    | combination × `sttl` | 9.5 pp | 8.3 pp |
+
+   **The split depends on the reference** (`evaluation/report_stats/fpr_gap_decomposition.csv`). The traffic-mix part ranges as follows across validation, midpoint and test references:
+   - protocol/service/state: 2.2–4.5 pp
+   - `sttl` value: 10.2–14.1 pp
+   - combination × `sttl`: 9.5–13.6 pp
+
+   The components are descriptive, not causal effects. Across the two TTL-based groupings (`sttl` value; combination × `sttl`) and the three references, the traffic-mix share of the gap is 53–79%. This is a **descriptive sensitivity range** showing how much the split depends on those analysis choices. It is **not a confidence interval** and it does **not** measure the causal contribution of TTL. The validation-reference figures in the table above, their calculations and `fig1_fpr_gap_decomposition.png` are unchanged.
 
 3. **TTL and false positives** (`ttl_analysis.csv`, `fig2_sttl_shift_and_fpr.png`).
 
@@ -113,7 +122,7 @@ The production model only scored validation and the official test set here. It r
    | `sttl=31` | 70% | 45% | 0.04% |
 
    - 90% of all training records with `sttl=254` are attacks.
-   - `sttl=254` normals cause 8,886 of the 9,904 test false positives.
+   - `sttl=254` normals account for 8,886 of the 9,904 test false positives.
 4. **Within the same TTL group, test FPR is higher than validation FPR** (`fig3_top_fp_groups.png`):
    - `tcp/-/FIN` with `sttl=254`: 44% → 61%
    - `udp/-/INT` with `sttl=254`: 44% → 78%
@@ -149,7 +158,7 @@ Script: `evaluation/experiment_ttl_free_multiseed.py`. Outputs: `evaluation/fp_a
 
 **What it shows:**
 - Removing the TTL features changed nothing measurable inside the training distribution. 99.9% of internal false positives stay in the slice, at about 39% FPR.
-- TTL **marks** the traffic group that is hard to classify. Removing it doesn't fix the errors, because other features carry the same information.
+- TTL **marks** the traffic group that is hard to classify. Removing it doesn't reduce the errors, which is consistent with other features carrying the same information.
 - Whether a TTL-free model behaves differently on the shifted official test set was not tested. It failed the pre-declared rule, and the test set is not used for selection.
 
 ## 7. Limitations
@@ -161,7 +170,8 @@ Script: `evaluation/experiment_ttl_free_multiseed.py`. Outputs: `evaluation/fp_a
 5. KS and PSI look at one feature at a time. KS p-values are left out because they are always "significant" at these sample sizes. PSI depends on how features are binned, and its 0.1/0.25 cut-offs are rules of thumb from other fields.
 6. Shift statistics show association, not cause. The explanations in section 5 are the most plausible ones, not proven mechanisms. Literature on TTL artefacts in UNSW-NB15 still has to be verified for the report.
 7. Random Forest scores are vote fractions, not calibrated probabilities of attack.
-8. Prevention is **simulated**. No real firewall enforcement takes place.
+8. Confidence intervals (`evaluation/report_stats/wilson_intervals.csv`) are Wilson intervals. They assume each record is an independent trial and ignore correlation between records and distribution shift, so they do not establish external generalisation.
+9. Prevention is **simulated**. No real firewall enforcement takes place.
 
 ## 8. Final Priority 1 decision
 
@@ -169,11 +179,11 @@ Script: `evaluation/experiment_ttl_free_multiseed.py`. Outputs: `evaluation/fp_a
 
 | Candidate | Outcome | Reason |
 |---|---|---|
-| Threshold 0.60 | Rejected | 333 more missed attacks; Fuzzers recall −9.7 pp |
+| Threshold 0.60 | Rejected | 333 more missed attacks; Fuzzers recall −9.7 pp (internal evaluation partition) |
 | Remove `dttl` | Rejected | Not robust across 5 seeds; within random variation |
 | Remove all TTL features | Rejected | No reduction in slice FPR (C1 failed) |
 
-The 26.77% official-test FPR is best explained by a difference between the training and test traffic. About half comes from more test normals having TTL values that mostly belong to attacks in training. The other half comes from normal traffic in the same groups being classified worse. Validation could not show this, because it matches the training data. This is reported as a known limitation of the model and the dataset.
+The 26.77% official-test FPR is most plausibly associated with a difference between the training and test traffic. Depending on the TTL-based grouping and the reference weighting, about 53–79% of the gap is associated with more test normals having TTL values that mostly belong to attacks in training. That range is a descriptive sensitivity range, not a confidence interval or a causal estimate. The rest is associated with normal traffic in the same groups being classified worse. Neither part is a proven cause. Validation could not show this, because it matches the training data. This is reported as a known limitation of the model and the dataset.
 
 **Possible follow-up, not started:** separate alerting from simulated blocking. Every flow above 0.50 would still alert, but only flows above a higher cut-off, chosen on internal data, would be blocked. This would need approval because it changes the prevention logic.
 
