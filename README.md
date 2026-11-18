@@ -40,7 +40,7 @@ The following results come from an initial inspection of our downloaded CSV file
 
 Both files have the same columns in the same order. They contain normal traffic and nine attack categories: Analysis, Backdoor, DoS, Exploits, Fuzzers, Generic, Reconnaissance, Shellcode and Worms.
 
-The repeated-row counts measure occurrences beyond the first copy of each row, comparing every column except `id`. There are also 940 distinct records shared between the training and testing files under that comparison, including the labels. These are preliminary overlap checks. Feature-only overlap and conflicting labels still need inspection before deciding how to handle duplicates during evaluation.
+The repeated-row counts measure occurrences beyond the first copy of each row, comparing every column except `id`. There are also 940 distinct records shared between the training and testing files under that comparison, including the labels. These were preliminary overlap checks. Feature-only overlap and conflicting labels were inspected afterwards; see [Preprocessing inspection and proposed approach](#preprocessing-inspection-and-proposed-approach) and [Final baseline test evaluation](#final-baseline-test-evaluation).
 
 The absence of empty cells does not establish that all values are valid. Numeric validity, infinite values and categorical placeholders still need checking. The raw files should be preserved so that cleaning decisions can be reproduced.
 
@@ -59,7 +59,7 @@ The categorical input fields are `proto`, `service` and `state`. Their values mu
 
 These prepared CSV files have no source-IP column. The simulated block list will therefore use clearly labelled demonstration identifiers, kept separate from the model inputs.
 
-Model selection will use a validation split created from the training file. The supplied test file is reserved for final evaluation. A documented policy for duplicates and overlap is required before training and evaluation proceed.
+Model selection used a grouped validation split created from the training file. The supplied test file was used for the final baseline evaluation and later for Priority 1 diagnostics, never for selecting models or thresholds. Duplicates and overlap are handled by grouped splitting and by reporting a test subset that excludes records also present in training.
 
 ## Preprocessing inspection and proposed approach
 
@@ -91,7 +91,7 @@ There are 1,302 distinct input-feature records shared across the supplied partit
 5. Select model settings and thresholds using validation data. Evaluate the final model on the official test set, reporting both full-set metrics and a separate subset excluding feature records present in the model's training data. Report subset sizes and class distributions, since exclusion changes the evaluation population.
 6. Confirm the documented meaning of `is_ftp_login` and service placeholders before changing those values. Check feature ranges against their definitions before treating unusual numeric values as errors.
 
-These are proposed decisions. No cleaned dataset, validation partition or trained model has been created by this inspection.
+Decisions 1, 2, 4 and 5 were implemented in `preprocessing/prepare.py`, `models/train.py` and `evaluation/evaluate.py`. The deduplicated training variant in decision 3 was not evaluated, and the meaning of the `is_ftp_login` values in decision 6 remains unconfirmed.
 
 ## System design
 
@@ -383,13 +383,13 @@ Priority 1 investigated the high official-test false-positive rate. The full rep
 - dataset-shift analysis across the training, validation and official test data
 
 **Alternatives that were rejected:**
-- **Threshold 0.60.** It lowered internal FPR from 10.06% to 6.93%, but missed 333 more attacks. Fuzzers recall fell from 85.83% to 76.16% and Analysis recall from 90.82% to 82.95%. It was not deployed.
+- **Threshold 0.60.** On the internal evaluation partition of the training data, it lowered FPR from 10.06% to 6.93% but missed 333 more attacks. Fuzzers recall fell from 85.83% to 76.16% and Analysis recall from 90.82% to 82.95%. It was not deployed and was never evaluated on the official test set. There, the deployed 0.50 model detects 90.04% of Fuzzers and 99.85% of Analysis records, so Analysis is weak only internally.
 - **Removing `dttl`.** FPR was lower on only 1 of 5 seeds, and on average it rose by 0.14 percentage points. This did not pass the predefined multi-seed improvement criteria.
 - **Removing all three TTL features (`sttl`, `dttl`, `ct_state_ttl`).** False positives on normal traffic with high TTL values fell on only 2 of 5 seeds, and on average rose slightly, within random-seed variation. This also did not pass the predefined criteria.
 
 **Dataset shift:**
 - The validation data is distributed like the training data: the largest KS statistic is 0.016. The official test data is not: its largest KS statistic is 0.27.
-- Test normal records more often carry TTL values that mostly belong to attacks in training. For example, records with `sttl=254` are 20% of training normals but 41% of test normals, and they produce 8,886 of the 9,904 test false positives.
+- Test normal records more often carry TTL values that mostly belong to attacks in training. For example, records with `sttl=254` are 20% of training normals but 41% of test normals, and they account for 8,886 of the 9,904 test false positives. Across two TTL-based grouping definitions and three reference weightings, about 53–79% of the FPR gap is associated with this TTL mix change ([`evaluation/report_stats/fpr_gap_decomposition.csv`](evaluation/report_stats/fpr_gap_decomposition.csv)). This is a descriptive sensitivity range, not a confidence interval, and it does not establish the causal contribution of TTL. The original decomposition figures are unchanged.
 - These TTL-related changes are **associated** with the high test false-positive rate, but they have **not** been shown to be the sole cause:
   - removing the TTL features did not reduce false positives internally
   - normal traffic within the same TTL groups is also classified worse on the test set
@@ -402,6 +402,7 @@ Figures are in [`evaluation/shift_analysis/figures/`](evaluation/shift_analysis/
 - **The evaluation data has been reused.** The validation set and internal evaluation partitions were used repeatedly during development. The official test set was inspected for the baseline evaluation and the shift diagnostics. It was never used to select models or thresholds, but it is no longer untouched.
 - **One dataset only.** All results come from UNSW-NB15, so generalisation to live or different networks is not established.
 - **Scores are not calibrated probabilities.** Random Forest attack scores are vote fractions, not calibrated probabilities of an attack.
+- **Confidence intervals are within-dataset only.** The 95% Wilson intervals in [`evaluation/report_stats/wilson_intervals.csv`](evaluation/report_stats/wilson_intervals.csv) assume independent records and ignore distribution shift. For example, the official-test FPR interval is 26.32–27.22%.
 
 Reproduce the Priority 1 experiments from the repository root:
 
@@ -409,4 +410,11 @@ Reproduce the Priority 1 experiments from the repository root:
 python -m evaluation.experiment_multiseed
 python -m evaluation.experiment_ttl_free_multiseed
 python -m evaluation.analyze_dataset_shift
+```
+
+Report statistics and figures are rebuilt from the committed result files, without loading or training any model:
+
+```powershell
+python -m evaluation.report_statistics
+python -m evaluation.report_figures
 ```
