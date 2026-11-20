@@ -53,6 +53,7 @@ def check():
         assert len(app.tabs) == 0 and app.radio[0].value == "Command Overview"
         assert app.radio[0].options == [
             "Command Overview",
+            "Traffic Intelligence",
             "Incident Investigation",
             "Detection Intelligence",
             "Prevention & Replay",

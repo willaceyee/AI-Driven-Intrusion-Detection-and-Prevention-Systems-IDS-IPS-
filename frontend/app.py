@@ -22,8 +22,13 @@ from frontend.detection_intelligence import (
 )
 from frontend.soc_theme import apply_soc_theme, render_brand, render_empty_state, render_section_header
 from frontend.traffic_intelligence import (
+    CATEGORICAL,
+    NUMERIC,
     THREAT_SCENARIOS,
+    build_traffic_projection,
+    filter_projection,
     get_scenario,
+    make_projection_figure,
     make_scenario_globe,
 )
 
@@ -33,6 +38,7 @@ PREVIEW_ROWS = 100
 SEQUENCE_SEGMENTS = 48
 NAV_ITEMS = (
     "Command Overview",
+    "Traffic Intelligence",
     "Incident Investigation",
     "Detection Intelligence",
     "Prevention & Replay",
@@ -45,6 +51,9 @@ def clear_results():
     """Remove results whenever the selected upload changes or a request fails."""
     st.session_state.pop("prediction_result", None)
     st.session_state.pop("result_filename", None)
+    st.session_state.pop("traffic_projection", None)
+    st.session_state.pop("projection_metadata", None)
+    st.session_state.pop("projection_error", None)
     st.session_state.pop("investigation_query", None)
     st.session_state.pop("replay_position", None)
     st.session_state.pop("record_linked_notice", None)
@@ -117,6 +126,13 @@ def run_detection(upload):
             st.session_state.upload_context_metadata = context_metadata
         except Exception as error:  # Optional analysis must not invalidate genuine backend results.
             st.session_state.upload_context_error = str(error)
+        try:
+            with st.spinner("Preparing a bounded feature-similarity projection…"):
+                projection, metadata = build_traffic_projection(upload.getvalue(), result["results"])
+            st.session_state.traffic_projection = projection
+            st.session_state.projection_metadata = metadata
+        except Exception as error:  # Detection remains usable if optional visualization preparation fails.
+            st.session_state.projection_error = str(error)
     except requests.exceptions.Timeout:
         st.error("The request timed out. Try a smaller CSV and check the backend terminal.")
     except requests.exceptions.ConnectionError:
@@ -297,13 +313,37 @@ def render_overview(rows, summary, result):
                 width="stretch",
             )
 
-    with st.container(border=True):
-        globe_copy, globe_visual = st.columns([0.75, 1.25], gap="medium", vertical_alignment="center")
-        with globe_copy:
+    traffic_column, globe_column = st.columns(2, gap="small")
+    projection = st.session_state.get("traffic_projection")
+    with traffic_column:
+        with st.container(border=True):
+            st.markdown("#### Traffic Intelligence")
+            st.caption("Actual uploaded features · PCA similarity, not network topology.")
+            if projection is not None:
+                st.plotly_chart(
+                    make_projection_figure(projection, dimensions=2, height=255),
+                    width="stretch",
+                    config={"displaylogo": False, "scrollZoom": False},
+                    key="overview_projection",
+                )
+            else:
+                st.warning("Feature projection unavailable; detection results remain usable.")
+            st.button(
+                "Open Traffic Intelligence",
+                key="overview_traffic",
+                on_click=navigate_to,
+                args=("Traffic Intelligence",),
+                width="stretch",
+            )
+    with globe_column:
+        with st.container(border=True):
             st.markdown("#### Scenario Globe · synthetic")
-            st.write(
-                "Use the tabletop scenario to demonstrate response sequencing. Its locations are deterministic "
-                "simulation data—not detected geography or global telemetry."
+            st.caption("Deterministic tabletop scenario—not detected geography or global telemetry.")
+            st.plotly_chart(
+                make_scenario_globe(THREAT_SCENARIOS[0], height=255),
+                width="stretch",
+                config={"displaylogo": False, "scrollZoom": False},
+                key="overview_globe",
             )
             st.button(
                 "Open Scenario Globe",
@@ -311,13 +351,6 @@ def render_overview(rows, summary, result):
                 on_click=navigate_to,
                 args=("Scenario Globe",),
                 width="stretch",
-            )
-        with globe_visual:
-            st.plotly_chart(
-                make_scenario_globe(THREAT_SCENARIOS[0], height=230),
-                width="stretch",
-                config={"displaylogo": False, "scrollZoom": False},
-                key="overview_globe",
             )
 
     st.markdown(
@@ -365,6 +398,21 @@ def render_record_inspector(visible):
             f"{escape(outcome)}{category}. These fields were joined after inference and were not model inputs."
         )
     st.markdown(f'<div class="evidence-note">{reference_text}</div>', unsafe_allow_html=True)
+
+    projection = st.session_state.get("traffic_projection")
+    represented = projection is not None and projection["row_number"].eq(selected_row).any()
+    if represented:
+        projected = projection.loc[projection["row_number"].eq(selected_row)].iloc[0]
+        st.caption(
+            f"Visualization context: represented in the bounded PCA sample at "
+            f"PC1 {projected['pc1']:.3f}, PC2 {projected['pc2']:.3f}, PC3 {projected['pc3']:.3f}. "
+            "Coordinates express transformed-feature similarity only."
+        )
+    else:
+        st.caption(
+            "Visualization context: this record is not in the bounded PCA sample. It remains available for "
+            "investigation and replay; no topology or communication relationship is implied."
+        )
 
     with st.expander("View all 42 model input features"):
         feature_table = pd.DataFrame({
@@ -438,6 +486,149 @@ def render_investigation(rows, result):
         cannot attribute the prediction to a real host.</div></div>""",
         unsafe_allow_html=True,
     )
+
+
+def render_traffic_intelligence():
+    render_section_header(
+        "Traffic intelligence explorer",
+        "Explore similarity among actual uploaded feature records using a bounded, deterministic projection.",
+        "FEATURE SPACE",
+    )
+    projection = st.session_state.get("traffic_projection")
+    metadata = st.session_state.get("projection_metadata")
+    if projection is None or metadata is None:
+        st.warning(
+            "The detection results remain available, but the feature projection could not be prepared. "
+            f"{st.session_state.get('projection_error', 'No projection data is available.')}"
+        )
+        return
+
+    variance = metadata["explained_variance_ratio"]
+    explained = sum(variance[:3])
+    st.markdown(
+        f"""<div class="analyst-callout compact"><div class="callout-label">HOW TO READ THIS</div>
+        <div><strong>Nearby points have similar transformed UNSW-NB15 feature values.</strong>
+        Position is PCA feature space—not geography, network topology, communication, or time.
+        The three displayed components explain {explained:.1%} of variance in the bounded sample.</div></div>""",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"Showing a deterministic, class-aware sample of {metadata['sample_rows']:,} from "
+        f"{metadata['source_rows']:,} uploaded records · seed {metadata['seed']} · maximum {metadata['max_points']:,}."
+    )
+    ratios = list(variance[:3]) + [0.0] * (3 - len(variance[:3]))
+    representation_columns = st.columns(4)
+    representation_values = [
+        ("Records represented", f"{metadata['sample_rows']:,}", f"of {metadata['source_rows']:,} uploaded"),
+        ("PC1 variance", f"{ratios[0]:.1%}", "Sample-fitted PCA"),
+        ("PC2 variance", f"{ratios[1]:.1%}", "Sample-fitted PCA"),
+        ("PC3 variance", f"{ratios[2]:.1%}", "Sample-fitted PCA"),
+    ]
+    for column, (label, value, detail) in zip(representation_columns, representation_values):
+        with column:
+            metric_card(label, value, detail)
+
+    source_classes = metadata["source_class_counts"]
+    sample_classes = metadata["sample_class_counts"]
+    st.info(
+        "Sampling disclosure: the deterministic sample is allocated across predicted classes so both model "
+        f"outcomes remain visible (source normal {source_classes.get('normal', 0):,}, malicious "
+        f"{source_classes.get('malicious', 0):,}; sample normal {sample_classes.get('normal', 0):,}, malicious "
+        f"{sample_classes.get('malicious', 0):,}). Sampling and PCA can compress rare patterns and distort visual "
+        "density; use the complete exports and investigation table for record counts."
+    )
+
+    control_columns = st.columns(3)
+    with control_columns[0]:
+        prediction = st.selectbox(
+            "Projection prediction", ["All", "Malicious", "Normal"], key="projection_prediction"
+        )
+    with control_columns[1]:
+        categorical_feature = st.selectbox(
+            "Categorical feature", ["None", *CATEGORICAL], key="projection_category"
+        )
+    with control_columns[2]:
+        numeric_feature = st.selectbox(
+            "Numeric feature", ["None", *NUMERIC], key="projection_numeric"
+        )
+
+    categorical_values = None
+    if categorical_feature != "None":
+        options = sorted(projection[categorical_feature].astype(str).unique())
+        categorical_values = st.multiselect(
+            f"Filter {categorical_feature}", options, key=f"projection_values_{categorical_feature}"
+        )
+    numeric_range = None
+    if numeric_feature != "None":
+        minimum = float(projection[numeric_feature].min())
+        maximum = float(projection[numeric_feature].max())
+        if minimum < maximum:
+            numeric_range = st.slider(
+                f"Filter {numeric_feature}",
+                min_value=minimum,
+                max_value=maximum,
+                value=(minimum, maximum),
+                key=f"projection_range_{numeric_feature}",
+            )
+        else:
+            st.caption(f"All sampled records have {numeric_feature} = {minimum:g}.")
+
+    visible = filter_projection(
+        projection,
+        prediction=prediction,
+        categorical_feature=None if categorical_feature == "None" else categorical_feature,
+        categorical_values=categorical_values,
+        numeric_feature=None if numeric_feature == "None" else numeric_feature,
+        numeric_range=numeric_range,
+    )
+    st.caption(f"{len(visible):,} sampled records match the active projection filters.")
+    if visible.empty:
+        st.info("No sampled records match this filter combination. Adjust a filter to restore the view.")
+        return
+
+    view_mode = st.radio(
+        "Projection view",
+        ["3D feature space", "2D accessible view"],
+        horizontal=True,
+        key="projection_view_mode",
+    )
+    dimensions = 3 if view_mode.startswith("3D") else 2
+    st.plotly_chart(
+        make_projection_figure(visible, dimensions=dimensions),
+        width="stretch",
+        config={"displaylogo": False, "scrollZoom": True},
+        key=f"traffic_projection_{dimensions}",
+    )
+
+    row_options = visible["row_number"].astype(int).tolist()
+    selected_row = st.selectbox(
+        "Inspect sampled record",
+        row_options,
+        format_func=lambda value: (
+            f"Row {value:,} · "
+            f"{visible.loc[visible['row_number'] == value, 'prediction'].iloc[0].upper()}"
+        ),
+        key="projection_record",
+    )
+    record = visible.loc[visible["row_number"] == selected_row].iloc[0]
+    full_record_id = str(record["record_id"])
+    tone = "replay-danger" if record["prediction"] == "malicious" else "replay-safe"
+    st.markdown(
+        f"""<div class="replay-card {tone}"><div class="replay-index">SAMPLED RECORD · CSV ROW {int(record['row_number']):,}</div>
+        <div class="replay-status">{record['prediction'].upper()} · {record['simulated_action'].upper()}</div>
+        <div class="replay-grid"><span>Record</span><strong title="{escape(full_record_id)}">{escape(short_record_id(full_record_id))}</strong>
+        <span>Protocol / service / state</span><strong>{escape(str(record['proto']))} / {escape(str(record['service']))} / {escape(str(record['state']))}</strong>
+        <span>PCA coordinates</span><strong>{record['pc1']:.3f}, {record['pc2']:.3f}, {record['pc3']:.3f}</strong></div></div>""",
+        unsafe_allow_html=True,
+    )
+    st.button(
+        "Use this record in investigation and replay",
+        key="projection_handoff",
+        on_click=link_record_to_workflow,
+        args=(record["record_id"], int(record["row_number"])),
+    )
+    if st.session_state.get("record_linked_notice") == int(record["row_number"]):
+        st.success("Record linked. Open Incident investigation or Prevention & Replay to continue.")
 
 
 def render_scenario_globe():
@@ -810,6 +1001,8 @@ else:
     )
     if workspace == "Command Overview":
         render_overview(rows, result["summary"], result)
+    elif workspace == "Traffic Intelligence":
+        render_traffic_intelligence()
     elif workspace == "Incident Investigation":
         render_investigation(rows, result)
     elif workspace == "Detection Intelligence":

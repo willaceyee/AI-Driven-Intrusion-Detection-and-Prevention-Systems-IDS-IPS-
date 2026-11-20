@@ -281,9 +281,9 @@ Start the backend using the command above. In a second terminal at the repositor
 
 Teammates with an environment inside the repository should substitute `.\.venv\Scripts\python.exe`. Open `http://127.0.0.1:8501`, upload `data/processed/demo_sample.csv` and click **Run detection**.
 
-The dashboard uses a responsive dark Security Operations Center layout with six persistent workspaces: Command Overview, Incident Investigation, Detection Intelligence, Prevention & Replay, Scenario Globe, and Model & Reports. The overview combines five evidence-backed KPI cards, the real prediction split, predictions across ordered CSV row segments, an investigation queue, simulated-prevention status, and a clearly labelled entry point to the synthetic globe. Row sequence is file order rather than an event timeline. Investigation provides prediction, simulated-action and record search filters with previews limited to 100 rows. An evaluation-audit record can be handed directly to investigation and replay. Attack replay steps through returned records in upload order and is explicitly a deterministic review rather than live packet playback. On narrow screens, the sidebar becomes a drawer and the overview cards and analytical panels stack without introducing a horizontally scrolling tab bar.
+The dashboard uses a responsive dark Security Operations Center layout with seven persistent workspaces: Command Overview, Traffic Intelligence, Incident Investigation, Detection Intelligence, Prevention & Replay, Scenario Globe, and Model & Reports. The overview combines five evidence-backed KPI cards, the real prediction split, predictions across ordered CSV row segments, an investigation queue, simulated-prevention status, and clearly labelled entry points to the PCA explorer and synthetic globe. Row sequence is file order rather than an event timeline. Investigation provides prediction, simulated-action and record search filters with previews limited to 100 rows. An evaluation-audit or sampled PCA record can be handed directly to investigation and replay. Attack replay steps through returned records in upload order and is explicitly a deterministic review rather than live packet playback. On narrow screens, the sidebar becomes a drawer and the overview cards and analytical panels stack without introducing a horizontally scrolling tab bar.
 
-The bounded PCA traffic-intelligence implementation and its deterministic transformation tests remain in the repository for a future milestone, but the workspace is intentionally not exposed in the current navigation and no projection is prepared during upload processing.
+Traffic Intelligence projects a deterministic, class-aware sample of at most 1,200 real uploaded feature records into PCA feature space. It supports prediction and available-feature filters, interactive 3D exploration, an accessible 2D alternative, and record handoff to investigation and replay. The interface discloses sample size and explained-variance ratios. Distances represent similarity among transformed UNSW-NB15 features; they are not network connections, geography, devices, packet timestamps, or model confidence.
 
 The scenario globe is a separate deterministic tabletop aid. Its locations, paths, activity sequences and outcomes are explicitly synthetic and are never presented as Random Forest detections or global attack telemetry. It intentionally remains secondary to the real upload and investigation workflow.
 
@@ -311,10 +311,11 @@ Run the repeatable checks with the backend active:
 ..\.venv\Scripts\python.exe -m backend.check_api
 ..\.venv\Scripts\python.exe -m frontend.check_detection_intelligence
 ..\.venv\Scripts\python.exe -m frontend.check_traffic_intelligence
+..\.venv\Scripts\python.exe -m frontend.check_traffic_workspace
 ..\.venv\Scripts\python.exe -m frontend.check_dashboard
 ```
 
-The traffic-intelligence check covers deterministic bounded sampling, PCA repeatability, filters, 2D fallback and synthetic-scenario stability. It and the frontend response-contract check do not require a running backend and are useful for quick UI regression checks:
+The traffic-intelligence unit check covers deterministic bounded sampling, PCA repeatability, filters, 2D fallback and synthetic-scenario stability. The traffic-workspace check requires the local backend and sends the real 35,069-row validation file through the application; it verifies that the bounded PCA sample is connected to returned predictions, opens the 3D and 2D views, applies a prediction filter, and hands a sampled record into investigation and replay. The unit check and frontend response-contract check do not require a running backend and are useful for quick UI regression checks:
 
 ```powershell
 ..\.venv\Scripts\python.exe -m frontend.check_dashboard_contract
