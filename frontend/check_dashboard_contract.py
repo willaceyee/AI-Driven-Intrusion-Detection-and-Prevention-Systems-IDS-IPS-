@@ -51,15 +51,27 @@ def check():
         detection_button(app).click().run(timeout=15)
         assert not app.exception and not app.error
         assert len(app.tabs) == 0 and app.radio[0].value == "Command Overview"
+        assert app.radio[0].options == [
+            "Command Overview",
+            "Incident Investigation",
+            "Detection Intelligence",
+            "Prevention & Replay",
+            "Scenario Globe",
+            "Model & Reports",
+        ]
         assert len(app.dataframe[0].value) == 2
 
         app.radio[0].set_value("Incident Investigation").run(timeout=15)
         assert len(app.selectbox) >= 2
         assert len(app.dataframe[0].value) == 3
+        assert "record_reference" in app.dataframe[0].value.columns
+        assert app.dataframe[0].value["record_reference"].str.startswith("…").all()
+        assert "record_id" in app.dataframe[0].value.columns
         app.selectbox[0].select("Malicious").run(timeout=15)
         assert app.dataframe[0].value.prediction.eq("malicious").all()
         app.selectbox[1].select("Block").run(timeout=15)
         assert app.dataframe[0].value.simulated_action.eq("block").all()
+        assert all(button.label != "Request validated explanation" for button in app.button)
 
         app.radio[0].set_value("Prevention & Replay").run(timeout=15)
         assert len(app.slider) == 1 and len(app.dataframe[0].value) == 2
