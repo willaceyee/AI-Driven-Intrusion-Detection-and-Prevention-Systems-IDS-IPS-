@@ -36,10 +36,10 @@ THREAT_SCENARIOS = (
         "credential-spray",
         "Credential spray exercise",
         "Simulated credential access",
-        "Reykjavík scenario node",
+        "Reykjavík",
         64.1466,
         -21.9426,
-        "Kuala Lumpur scenario node",
+        "Kuala Lumpur",
         3.1390,
         101.6869,
         ("Authentication burst", "Rule match", "Account challenge", "Analyst review"),
@@ -49,10 +49,10 @@ THREAT_SCENARIOS = (
         "service-probe",
         "Exposed-service probe",
         "Simulated reconnaissance",
-        "São Paulo scenario node",
+        "São Paulo",
         -23.5505,
         -46.6333,
-        "Singapore scenario node",
+        "Singapore",
         1.3521,
         103.8198,
         ("Port sequence observed", "Rate threshold crossed", "Session isolated", "Case retained"),
@@ -62,10 +62,10 @@ THREAT_SCENARIOS = (
         "data-egress",
         "Data-egress tabletop",
         "Simulated abnormal transfer",
-        "Tokyo scenario node",
+        "Tokyo",
         35.6762,
         139.6503,
-        "Sydney scenario node",
+        "Sydney",
         -33.8688,
         151.2093,
         ("Transfer volume rises", "Policy alert", "Connection paused", "Evidence exported"),
@@ -235,28 +235,51 @@ def make_projection_figure(projection, dimensions=3, height=560):
     return figure
 
 
-def make_scenario_globe(scenario, height=560):
-    """Create a globe for one explicitly synthetic, deterministic exercise."""
+def make_scenario_globe(scenario, height=560, stage_index=0):
+    """Create the static route and hover layer for the synthetic globe."""
     figure = go.Figure()
+    for item in THREAT_SCENARIOS:
+        selected = item.scenario_id == scenario.scenario_id
+        figure.add_trace(go.Scattergeo(
+            lat=[item.origin_lat, item.destination_lat],
+            lon=[item.origin_lon, item.destination_lon],
+            mode="lines",
+            line={"width": 4 if selected else 1.6, "color": "#ff5b73" if selected else "#4b718e"},
+            opacity=1 if selected else 0.55,
+            customdata=[[item.scenario_id, item.name, item.origin_name, item.destination_name]] * 2,
+            hovertemplate=(
+                "<b>%{customdata[1]}</b><br>%{customdata[2]} → %{customdata[3]}"
+                "<br>Educational simulation<extra></extra>"
+            ),
+            name=item.name,
+        ))
+
+    node_lat, node_lon, node_text, node_data, node_color, node_size = [], [], [], [], [], []
+    for item in THREAT_SCENARIOS:
+        selected = item.scenario_id == scenario.scenario_id
+        for label, name, lat, lon, color in (
+            ("SOURCE", item.origin_name, item.origin_lat, item.origin_lon, "#ff5b73"),
+            ("DESTINATION", item.destination_name, item.destination_lat, item.destination_lon, "#35d7c1"),
+        ):
+            node_lat.append(lat); node_lon.append(lon); node_text.append(label)
+            node_data.append([item.scenario_id, item.name, name, item.steps[stage_index], item.outcome])
+            node_color.append(color); node_size.append(13 if selected else 8)
     figure.add_trace(go.Scattergeo(
-        lat=[scenario.origin_lat, scenario.destination_lat],
-        lon=[scenario.origin_lon, scenario.destination_lon],
-        mode="lines",
-        line={"width": 3, "color": "#ff4d6d"},
-        hoverinfo="skip",
-        name="Simulated route",
-    ))
-    figure.add_trace(go.Scattergeo(
-        lat=[scenario.origin_lat, scenario.destination_lat],
-        lon=[scenario.origin_lon, scenario.destination_lon],
+        lat=node_lat,
+        lon=node_lon,
         mode="markers+text",
-        marker={"size": [10, 13], "color": ["#ff4d6d", "#3de0c5"], "line": {"width": 1, "color": "#071018"}},
-        text=["SIMULATED ORIGIN", "SIMULATED DESTINATION"],
-        textposition=["top center", "bottom center"],
-        customdata=[scenario.origin_name, scenario.destination_name],
-        hovertemplate="%{text}<br>%{customdata}<extra></extra>",
-        name="Scenario nodes",
+        marker={"size": node_size, "color": node_color, "line": {"width": 1, "color": "#071018"}},
+        text=node_text,
+        textposition="top center",
+        textfont={"size": 9, "color": "#a7b5c6"},
+        customdata=node_data,
+        hovertemplate=(
+            "<b>%{customdata[1]}</b><br>%{text}: %{customdata[2]}"
+            "<br>Stage: %{customdata[3]}<br>Response: %{customdata[4]}<extra></extra>"
+        ),
+        name="Synthetic route anchors",
     ))
+
     figure.update_geos(
         projection_type="orthographic",
         projection_rotation={"lat": 12, "lon": 70, "roll": 0},
@@ -276,6 +299,6 @@ def make_scenario_globe(scenario, height=560):
         paper_bgcolor="rgba(0,0,0,0)",
         font={"color": "#a7b5c6"},
         showlegend=False,
-        uirevision=f"scenario-{scenario.scenario_id}",
+        uirevision=f"scenario-{scenario.scenario_id}-{stage_index}",
     )
     return figure

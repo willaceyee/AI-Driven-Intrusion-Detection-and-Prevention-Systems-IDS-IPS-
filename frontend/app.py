@@ -21,6 +21,7 @@ from frontend.detection_intelligence import (
     snapshot_from_labeled_records,
 )
 from frontend.soc_theme import apply_soc_theme, render_brand, render_empty_state, render_section_header
+from frontend.scenario_interaction import render_scenario_card
 from frontend.traffic_intelligence import (
     CATEGORICAL,
     NUMERIC,
@@ -70,9 +71,47 @@ def link_record_to_workflow(record_id, row_number):
     st.session_state.record_linked_notice = int(row_number)
 
 
+def open_record_workspace(record_id, row_number, workspace):
+    """Keep the exact record identity while moving to its next workflow step."""
+    link_record_to_workflow(record_id, row_number)
+    navigate_to(workspace)
+
+
 def navigate_to(workspace):
     """Move between SOC workspaces without duplicating horizontal navigation."""
     st.session_state.active_workspace = workspace
+
+
+def render_back_to_overview():
+    st.button(
+        "← Back to Command Overview",
+        key=f"back_overview_{st.session_state.get('active_workspace', 'workspace')}",
+        on_click=navigate_to,
+        args=("Command Overview",),
+    )
+
+
+def render_chart_guide(summary, details):
+    """Keep essential chart meaning visible and deeper guidance optional."""
+    st.caption(summary)
+    with st.expander("How to read this chart"):
+        st.markdown(details)
+
+
+def set_replay_position(position):
+    st.session_state.replay_position = int(position)
+
+
+def move_replay(delta, total):
+    current = int(st.session_state.get("replay_position", 1))
+    st.session_state.replay_position = max(1, min(total, current + delta))
+
+
+def move_to_next_flagged(flagged_positions):
+    current = int(st.session_state.get("replay_position", 1))
+    later = [position for position in flagged_positions if position > current]
+    if later:
+        st.session_state.replay_position = later[0]
 
 
 def short_record_id(record_id):
@@ -234,11 +273,21 @@ def render_overview(rows, summary, result):
     with chart_column:
         with st.container(border=True):
             st.markdown("#### Threat activity by ordered record")
-            st.caption("Model decisions across the uploaded file sequence · row order, not event time.")
+            render_chart_guide(
+                "Flagged share across CSV row segments · file order, not event time.",
+                "The horizontal axis follows uploaded row order. The vertical axis is the proportion predicted "
+                "malicious in each segment. Red indicates predicted malicious activity. Hover for segment counts. "
+                "This chart cannot show real timing, packet flow, severity, or communication between records.",
+            )
             st.altair_chart(make_sequence_chart(rows), width="stretch")
     with distribution_column:
         with st.container(border=True):
             st.markdown("#### Detection distribution")
+            render_chart_guide(
+                "Current upload split between predicted malicious and predicted normal records.",
+                "Red is the count predicted malicious; teal is predicted normal. Hover for exact counts. These "
+                "are model decisions for this upload—not ground truth, attack severity, or confidence.",
+            )
             st.altair_chart(make_distribution_chart(summary), width="stretch")
     with status_column:
         with st.container(border=True):
@@ -293,6 +342,25 @@ def render_overview(rows, summary, result):
                     "evaluation": st.column_config.TextColumn("Evaluation outcome"),
                 },
             )
+            st.caption("Select a flagged row below to carry its exact identifier into investigation.")
+            if not queue.empty:
+                queued_row = st.selectbox(
+                    "Flagged record to investigate",
+                    queue["row_number"].astype(int).tolist(),
+                    format_func=lambda value: (
+                        f"CSV row {value:,} · "
+                        f"{short_record_id(queue.loc[queue['row_number'].eq(value), 'record_id'].iloc[0])}"
+                    ),
+                    key="overview_flagged_record",
+                )
+                queued_record = queue.loc[queue["row_number"].eq(queued_row)].iloc[0]
+                st.button(
+                    "Investigate selected record",
+                    key="overview_selected_investigation",
+                    on_click=open_record_workspace,
+                    args=(queued_record["record_id"], int(queued_record["row_number"]), "Incident Investigation"),
+                    width="stretch",
+                )
             with st.expander("Full demonstration identifiers"):
                 st.code("\n".join(queue["record_id"].astype(str)), language=None, wrap_lines=True)
     with prevention_column:
@@ -339,9 +407,8 @@ def render_overview(rows, summary, result):
         with st.container(border=True):
             st.markdown("#### Scenario Globe · synthetic")
             st.caption("Deterministic tabletop scenario—not detected geography or global telemetry.")
-            scenario = THREAT_SCENARIOS[0]
             st.plotly_chart(
-                make_scenario_globe(scenario, height=255),
+                make_scenario_globe(THREAT_SCENARIOS[0], height=255),
                 width="stretch",
                 config={"displaylogo": False, "scrollZoom": False},
                 key="overview_globe",
@@ -359,23 +426,6 @@ def render_overview(rows, summary, result):
         <div><strong>A model flag is a review signal, not proof of intrusion.</strong> Corroborate decisions with
         packet, session, host, or identity evidence before escalation.</div></div>""",
         unsafe_allow_html=True,
-    )
-
-
-def render_explanation_panel():
-    st.markdown("#### Explainable AI readiness")
-    st.markdown(
-        """<div class="explanation-locked"><div><span>BACKEND SUPPORT REQUIRED</span>
-        <strong>Record-level explanation unavailable</strong></div>
-        <p>The current API returns a class label, not a probability, calibrated score, decision threshold,
-        or validated feature attribution. Input values below are evidence for investigation—not proof that a
-        feature caused this decision.</p></div>""",
-        unsafe_allow_html=True,
-    )
-    st.button("Request validated explanation", disabled=True, key="explanation_disabled")
-    st.caption(
-        "Enable only after the backend supplies model/version identity, score semantics and calibration status, "
-        "explanation method, source-feature mapping, attribution values, and decision-policy metadata."
     )
 
 
@@ -442,16 +492,32 @@ def render_record_inspector(visible):
             "These are the genuine uploaded inputs used by the existing pipeline. Display order is descriptive; "
             "it is not a feature-importance ranking."
         )
-    st.button(
-        "Prepare this record for replay",
-        key="investigation_replay_handoff",
-        on_click=link_record_to_workflow,
-        args=(record["record_id"], selected_row),
-    )
-    render_explanation_panel()
+    handoff_columns = st.columns(2)
+    with handoff_columns[0]:
+        st.button(
+            "Open in Prevention & Replay",
+            key="investigation_replay_handoff",
+            on_click=open_record_workspace,
+            args=(record["record_id"], selected_row, "Prevention & Replay"),
+            width="stretch",
+        )
+    with handoff_columns[1]:
+        st.button(
+            "Open Traffic Intelligence context",
+            key="investigation_pca_handoff",
+            on_click=open_record_workspace,
+            args=(record["record_id"], selected_row, "Traffic Intelligence"),
+            disabled=not represented,
+            help=(
+                "Open the bounded PCA sample at this record."
+                if represented else "This record is not represented in the bounded PCA sample."
+            ),
+            width="stretch",
+        )
 
 
 def render_investigation(rows, result):
+    render_back_to_overview()
     render_section_header(
         "Incident investigation",
         "Filter model decisions, inspect uploaded features, and connect evidence to replay.",
@@ -480,14 +546,19 @@ def render_investigation(rows, result):
             record_match | visible["row_number"].astype(str).eq(needle)
         ]
     st.caption(f"Showing up to {PREVIEW_ROWS} of {len(visible):,} matching records.")
+    preview = visible.head(PREVIEW_ROWS).copy()
+    preview.insert(0, "record_reference", preview["record_id"].map(short_record_id))
     st.dataframe(
-        visible.head(PREVIEW_ROWS),
+        preview,
         hide_index=True,
         width="stretch",
+        column_order=["record_reference", "row_number", "prediction", "simulated_action"],
         column_config={
-            "record_id": st.column_config.TextColumn("Demonstration record"),
+            "record_reference": st.column_config.TextColumn(
+                "Record reference",
+                help="A shortened display reference. The full demonstration identifier remains available in record inspection and exports.",
+            ),
             "row_number": st.column_config.NumberColumn("Row", format="%d"),
-            "predicted_label": st.column_config.NumberColumn("Label", format="%d"),
             "prediction": st.column_config.TextColumn("Prediction"),
             "simulated_action": st.column_config.TextColumn("Simulated action"),
         },
@@ -503,6 +574,7 @@ def render_investigation(rows, result):
 
 
 def render_traffic_intelligence():
+    render_back_to_overview()
     render_section_header(
         "Traffic intelligence explorer",
         "Explore similarity among actual uploaded feature records using a bounded, deterministic projection.",
@@ -530,6 +602,14 @@ def render_traffic_intelligence():
         f"Showing a deterministic, class-aware sample of {metadata['sample_rows']:,} from "
         f"{metadata['source_rows']:,} uploaded records · seed {metadata['seed']} · maximum {metadata['max_points']:,}."
     )
+    with st.expander("How to read the PCA chart"):
+        st.markdown(
+            "Each point is one sampled uploaded traffic record. **Red diamonds** are predicted malicious and "
+            "**teal circles** are predicted normal. PC1, PC2 and PC3 are compressed combinations of the 42 "
+            "model inputs; the variance cards show how much sample variation each axis retains. Rotate, zoom, "
+            "hover or use the 2D view and filters. Nearby points have similar transformed features, but they "
+            "do not prove network communication, physical proximity, causality, severity, or confidence."
+        )
     ratios = list(variance[:3]) + [0.0] * (3 - len(variance[:3]))
     representation_columns = st.columns(4)
     representation_values = [
@@ -541,6 +621,7 @@ def render_traffic_intelligence():
     for column, (label, value, detail) in zip(representation_columns, representation_values):
         with column:
             metric_card(label, value, detail)
+
     source_classes = metadata["source_class_counts"]
     sample_classes = metadata["sample_class_counts"]
     st.info(
@@ -624,11 +705,12 @@ def render_traffic_intelligence():
         key="projection_record",
     )
     record = visible.loc[visible["row_number"] == selected_row].iloc[0]
+    full_record_id = str(record["record_id"])
     tone = "replay-danger" if record["prediction"] == "malicious" else "replay-safe"
     st.markdown(
         f"""<div class="replay-card {tone}"><div class="replay-index">SAMPLED RECORD · CSV ROW {int(record['row_number']):,}</div>
         <div class="replay-status">{record['prediction'].upper()} · {record['simulated_action'].upper()}</div>
-        <div class="replay-grid"><span>Record</span><strong>{escape(str(record['record_id']))}</strong>
+        <div class="replay-grid"><span>Record</span><strong title="{escape(full_record_id)}">{escape(short_record_id(full_record_id))}</strong>
         <span>Protocol / service / state</span><strong>{escape(str(record['proto']))} / {escape(str(record['service']))} / {escape(str(record['state']))}</strong>
         <span>PCA coordinates</span><strong>{record['pc1']:.3f}, {record['pc2']:.3f}, {record['pc3']:.3f}</strong></div></div>""",
         unsafe_allow_html=True,
@@ -636,32 +718,61 @@ def render_traffic_intelligence():
     st.button(
         "Use this record in investigation and replay",
         key="projection_handoff",
-        on_click=link_record_to_workflow,
-        args=(record["record_id"], int(record["row_number"])),
+        on_click=open_record_workspace,
+        args=(record["record_id"], int(record["row_number"]), "Incident Investigation"),
     )
     if st.session_state.get("record_linked_notice") == int(record["row_number"]):
-        st.success("Record linked. Open Incident investigation or Attack replay to continue.")
+        st.success("Record linked. Open Incident investigation or Prevention & Replay to continue.")
 
 
 def render_scenario_globe():
+    render_back_to_overview()
     render_section_header(
         "Scenario threat globe",
-        "Explore a deterministic tabletop scenario that is deliberately separate from model detections.",
+        "Explore three deterministic tabletop routes that remain separate from model detections.",
         "SYNTHETIC",
     )
     st.warning(
-        "Scenario only: every location, route, activity step, and response below is synthetic. "
-        "The Random Forest model did not detect or infer geography."
+        "Educational simulation only: every location, route, moving signal, stage and response below is synthetic. "
+        "The Random Forest model did not discover or infer any geography or worldwide threat activity."
     )
-    scenario_id = st.selectbox(
-        "Tabletop scenario",
-        [item.scenario_id for item in THREAT_SCENARIOS],
-        format_func=lambda value: get_scenario(value).name,
-        key="scenario_id",
-    )
+    control_columns = st.columns([1.25, 1])
+    with control_columns[0]:
+        scenario_id = st.selectbox(
+            "Highlighted tabletop route",
+            [item.scenario_id for item in THREAT_SCENARIOS],
+            format_func=lambda value: get_scenario(value).name,
+            key="scenario_id",
+        )
     scenario = get_scenario(scenario_id)
+    with control_columns[1]:
+        stage_number = st.radio(
+            "Educational stage",
+            [1, 2, 3, 4],
+            horizontal=True,
+            key="scenario_stage",
+            format_func=lambda value: f"{value}. {scenario.steps[value - 1]}",
+        )
+    stage_index = stage_number - 1
+    st.markdown(
+        """<div class="scenario-legend" aria-label="Scenario globe legend">
+        <span><i class="legend-origin"></i>Origin and moving signal</span>
+        <span><i class="legend-destination"></i>Destination / simulated response</span>
+        <span><i class="legend-route"></i>Unselected synthetic route</span>
+        <span><i class="legend-selected"></i>Selected synthetic route</span></div>""",
+        unsafe_allow_html=True,
+    )
+    render_chart_guide(
+        "All three routes are synthetic; the selected route is brighter and moving coral points show direction.",
+        "Source and destination anchors remain fixed. Hover or tap a route, anchor or moving signal for the "
+        "scenario, route, selected stage and simulated response. Use the route selector to highlight a scenario; "
+        "on touch devices, tap a route or signal for its details. Motion starts automatically unless the browser's "
+        "reduced-motion preference is enabled. Motion "
+        "never changes the stage or any model result. These routes are not detected telemetry, real IP "
+        "locations, packet paths, timestamps, likelihoods, or attack counts.",
+    )
     st.plotly_chart(
-        make_scenario_globe(scenario),
+        make_scenario_globe(scenario, stage_index=stage_index),
         width="stretch",
         config={"displaylogo": False, "scrollZoom": True},
         key="scenario_globe",
@@ -681,13 +792,19 @@ def render_scenario_globe():
             )
     st.markdown("#### Scenario activity sequence")
     steps = "".join(
-        f'<div><b>{number:02d}</b><span>{escape(step)}</span></div>'
+        f'<div class="{"scenario-step-active" if number - 1 == stage_index else ""}"><b>{number:02d}</b><span>{escape(step)}</span></div>'
         for number, step in enumerate(scenario.steps, start=1)
     )
     st.markdown(f'<div class="scenario-steps">{steps}</div>', unsafe_allow_html=True)
+    st.caption(
+        "Desktop: drag the information card and release it to spring back. Keyboard: focus the card, use arrow "
+        "keys to move it, then Escape to reset. On mobile, use the visible reset control and stage selector."
+    )
+    render_scenario_card(scenario, stage_index, THREAT_SCENARIOS)
 
 
 def render_detection_analysis():
+    render_back_to_overview()
     render_section_header(
         "Detection intelligence",
         "Examine held-out model errors and, when labels exist, audit the current upload after prediction.",
@@ -715,16 +832,36 @@ def render_detection_analysis():
         with column:
             metric_card(label, f"{value:.2%}", detail, "warning" if label == "False-positive rate" else "neutral")
 
+    with st.expander("Metric definitions and evidence boundaries"):
+        st.markdown(
+            "- **Precision:** among records predicted malicious, the share that were recorded attacks.\n"
+            "- **Recall:** among recorded attacks, the share the model detected.\n"
+            "- **F1:** one balance of precision and recall; it does not include operational costs.\n"
+            "- **False-positive rate:** among genuinely normal records, the share incorrectly flagged malicious.\n\n"
+            "Validation supported model selection. The reserved test is a separate later check. A labelled current "
+            "upload is a post-prediction audit only; an unlabelled upload has predictions but no measurable accuracy."
+        )
+
     chart_columns = st.columns(2, gap="large")
     with chart_columns[0]:
         st.markdown(f"#### {snapshot.name} confusion matrix")
-        st.caption(f"{snapshot.total:,} records · {snapshot.role}")
+        render_chart_guide(
+            f"{snapshot.total:,} historical records · rows are actual classes; columns are model predictions.",
+            "Top-left is a true negative (normal correctly predicted normal). Top-right is a false positive "
+            "(normal incorrectly flagged). Bottom-left is a false negative (attack missed). Bottom-right is a "
+            "true positive (attack detected). Darker/brighter cells encode count, not severity or confidence.",
+        )
         st.plotly_chart(
             make_confusion_matrix_figure(snapshot), width="stretch", config={"displaylogo": False}
         )
     with chart_columns[1]:
         st.markdown("#### Validation versus reserved test")
-        st.caption("Separate splits shown side by side; the reserved test was not used for model selection.")
+        render_chart_guide(
+            "Historical percentages shown separately; the reserved test was not used for model selection.",
+            "Teal bars are validation and amber bars are the reserved test. Higher precision, recall and F1 are "
+            "generally desirable; a lower false-positive rate is desirable. Differences indicate generalisation "
+            "risk, not a live-network forecast and not performance for the current upload.",
+        )
         st.plotly_chart(
             make_metric_comparison_figure(), width="stretch", config={"displaylogo": False}
         )
@@ -772,6 +909,12 @@ def render_detection_analysis():
             with column:
                 metric_card(label, f"{value:.2%}", "Labelled upload audit")
         st.plotly_chart(make_outcome_figure(context), width="stretch", config={"displaylogo": False})
+        render_chart_guide(
+            "Current labelled-upload outcomes calculated only after predictions were returned.",
+            "Bars count true negatives, false positives, false negatives and true positives from verified labels. "
+            "These labels were excluded from model input. The chart describes this uploaded labelled dataset only "
+            "and does not establish live-network effectiveness.",
+        )
 
         filter_columns = st.columns(2)
         with filter_columns[0]:
@@ -791,12 +934,27 @@ def render_detection_analysis():
                 st.caption("No recorded attack-category field is available for filtering.")
         mistakes = filter_evaluation_records(context, outcome_filter, selected_categories)
         st.caption(f"{len(mistakes):,} records match this post-prediction audit filter; preview limited to {PREVIEW_ROWS}.")
-        display_columns = [
-            "record_id", "row_number", "reference_class", "prediction", "evaluation_outcome", "simulated_action"
-        ]
+        display_columns = ["record_reference", "row_number", "reference_class", "prediction", "evaluation_outcome"]
         if "reference_attack_category" in mistakes.columns:
             display_columns.append("reference_attack_category")
-        st.dataframe(mistakes[display_columns].head(PREVIEW_ROWS), hide_index=True, width="stretch")
+        mistake_preview = mistakes.head(PREVIEW_ROWS).copy()
+        mistake_preview.insert(0, "record_reference", mistake_preview["record_id"].map(short_record_id))
+        st.dataframe(
+            mistake_preview,
+            hide_index=True,
+            width="stretch",
+            column_order=display_columns,
+            column_config={
+                "record_reference": st.column_config.TextColumn(
+                    "Record reference",
+                    help="Use the row number or full exported identifier for exact traceability.",
+                ),
+                "row_number": st.column_config.NumberColumn("Row", format="%d"),
+                "reference_class": st.column_config.TextColumn("Reference"),
+                "evaluation_outcome": st.column_config.TextColumn("Outcome"),
+                "reference_attack_category": st.column_config.TextColumn("Recorded category"),
+            },
+        )
         if not mistakes.empty:
             audit_row = st.selectbox(
                 "Send audit record to investigation and replay",
@@ -836,27 +994,109 @@ def render_replay(rows, include_header=True):
             "REPLAY",
         )
     if rows.empty:
+        st.info("No prediction records are available to replay.")
         return
     position = st.slider("Record position", 1, len(rows), key="replay_position")
+    flagged_positions = [index + 1 for index, value in enumerate(rows["prediction"]) if value == "malicious"]
+    later_flagged = [value for value in flagged_positions if value > position]
+    nav_columns = st.columns([0.7, 0.7, 0.9, 1.25])
+    with nav_columns[0]:
+        st.button(
+            "Previous",
+            key="replay_previous",
+            disabled=position <= 1,
+            on_click=move_replay,
+            args=(-1, len(rows)),
+            width="stretch",
+        )
+    with nav_columns[1]:
+        st.button(
+            "Next",
+            key="replay_next",
+            disabled=position >= len(rows),
+            on_click=move_replay,
+            args=(1, len(rows)),
+            width="stretch",
+        )
+    with nav_columns[2]:
+        st.button(
+            "Next flagged",
+            key="replay_next_flagged",
+            disabled=not later_flagged,
+            on_click=move_to_next_flagged,
+            args=(flagged_positions,),
+            width="stretch",
+        )
+    with nav_columns[3]:
+        jump_target = st.number_input(
+            "Jump to CSV row",
+            min_value=1,
+            max_value=len(rows),
+            value=position,
+            step=1,
+            key="replay_jump_target",
+        )
+        st.button(
+            "Jump to record",
+            key="replay_jump",
+            on_click=set_replay_position,
+            args=(jump_target,),
+            width="stretch",
+        )
     event = rows.iloc[position - 1]
     malicious = event["prediction"] == "malicious"
     status = "THREAT DETECTED" if malicious else "TRAFFIC ALLOWED"
     tone = "replay-danger" if malicious else "replay-safe"
     st.markdown(
-        f"""<div class="replay-card {tone}"><div class="replay-index">EVENT {position:04d} / {len(rows):04d}</div>
+        f"""<div class="replay-card {tone}"><div class="replay-index">CSV RECORD {position:04d} / {len(rows):04d}</div>
         <div class="replay-status">{status}</div><div class="replay-grid">
         <span>Record</span><strong>{escape(str(event['record_id']))}</strong><span>Model label</span><strong>{int(event['predicted_label'])}</strong>
         <span>Simulated response</span><strong>{event['simulated_action'].upper()}</strong></div></div>""",
         unsafe_allow_html=True,
     )
+    st.caption(
+        f"Current position: CSV row {int(event['row_number']):,} · record {position:,} of {len(rows):,}. "
+        "This sequence follows file order and is not an event timestamp."
+    )
+    context = st.session_state.get("upload_context")
+    if context is not None and "evaluation_outcome" in context.columns:
+        reference = context.loc[context["row_number"].eq(int(event["row_number"]))]
+        if not reference.empty:
+            audit = reference.iloc[0]
+            st.markdown(
+                f"**Reference-label audit:** {escape(str(audit['reference_class']).title())} · "
+                f"{escape(str(audit['evaluation_outcome']).title())}. The reference label was joined after inference."
+            )
+            if audit["evaluation_outcome"] == "false positive":
+                st.warning(
+                    "False-positive review: this genuinely normal record was predicted malicious. A real automatic "
+                    "block could interrupt legitimate activity; the displayed block remains simulation only."
+                )
 
 
 def render_prevention_replay(rows, result):
+    render_back_to_overview()
     render_section_header(
         "Prevention and replay",
         "Review ordered model decisions and the simulated containment queue without changing real controls.",
         "RESPOND",
     )
+    st.markdown(
+        """<div class="decision-lab three-step"><div><span>1 · DETECTION</span><strong>Model prediction</strong>
+        <p>The unchanged API returns normal or malicious for each uploaded row.</p></div>
+        <div class="decision-arrow">→</div><div><span>2 · SIMULATED POLICY</span><strong>Allow or block</strong>
+        <p>Malicious maps to a simulated block; normal maps to allow. No control is changed.</p></div>
+        <div class="decision-arrow">→</div><div><span>3 · ANALYST REVIEW</span><strong>Validate evidence</strong>
+        <p>Review labels and source evidence before any real-world response.</p></div></div>""",
+        unsafe_allow_html=True,
+    )
+    with st.expander("How to use replay"):
+        st.markdown(
+            "Move one uploaded row at a time with **Previous** and **Next**, skip to the next malicious prediction "
+            "with **Next flagged**, or enter a CSV row and choose **Jump to record**. The slider gives a fast "
+            "overview of position. Replay is manual and deterministic—there are no packet timestamps, automatic "
+            "animation, live traffic, or real enforcement."
+        )
     replay_column, summary_column = st.columns([1.45, 0.75], gap="large")
     with replay_column:
         render_replay(rows, include_header=False)
@@ -878,13 +1118,26 @@ def render_prevention_replay(rows, result):
             "full_demonstration_identifier": result["simulated_block_list"][:PREVIEW_ROWS],
             "response": "simulated block",
         })
-        st.dataframe(block_preview, hide_index=True, width="stretch")
+        st.dataframe(
+            block_preview,
+            hide_index=True,
+            width="stretch",
+            column_order=["record_reference", "response"],
+            column_config={
+                "record_reference": st.column_config.TextColumn(
+                    "Record reference",
+                    help="Full demonstration identifiers remain available in Model & Reports exports.",
+                ),
+                "response": st.column_config.TextColumn("Simulated response"),
+            },
+        )
         st.caption("Preview limited to 100 identifiers. Complete prediction exports remain available in Model & Reports.")
     else:
         st.success("No malicious predictions were returned for this upload.")
 
 
 def render_exports(rows, result):
+    render_back_to_overview()
     render_section_header(
         "Model assurance and exports",
         "Separate established validation evidence from the current upload, then export the complete result set.",
@@ -892,6 +1145,13 @@ def render_exports(rows, result):
     )
     assurance = VALIDATION_SNAPSHOT
     if assurance:
+        with st.expander("How to interpret model assurance"):
+            st.markdown(
+                "Validation metrics come from the held-out split used during model selection; reserved-test metrics "
+                "come from a later untouched split. Attack F1 balances precision and recall. False-positive rate is "
+                "the share of normal records incorrectly flagged. These historical figures are not current-upload "
+                "accuracy, model confidence, or proof of effectiveness against live traffic."
+            )
         assurance_columns = st.columns(4)
         assurance_values = [
             ("Validation attack F1", assurance.f1, "Model selection split"),
@@ -911,6 +1171,10 @@ def render_exports(rows, result):
             "on the reserved test set. Operational deployment would require threshold and error-cost analysis."
         )
     st.markdown("#### Current case exports")
+    st.caption(
+        "CSV contains every returned prediction and simulated action. JSON preserves the complete backend response, "
+        "including summary and simulated block-list fields. Neither export adds confidence, timestamps or geography."
+    )
     csv_col, json_col = st.columns(2)
     with csv_col:
         st.download_button(
@@ -925,7 +1189,10 @@ def render_exports(rows, result):
 
 
 st.set_page_config(
-    page_title="Sentinel SOC | IDS/IPS", page_icon="🛡️", layout="wide", initial_sidebar_state="expanded"
+    page_title="Sentinel Command — AI-Driven IDS/IPS",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 apply_soc_theme()
 
@@ -937,7 +1204,11 @@ with st.sidebar:
         "Upload traffic CSV", type=["csv"], on_change=clear_results,
         help="Use the agreed UNSW-NB15 format with all 42 prediction features.",
     )
-    st.caption("Optional dataset label columns are excluded from prediction by the backend.")
+    st.markdown(
+        """<div class="upload-guidance"><strong>CSV requirements</strong>
+        <span>Include all 42 UNSW-NB15 prediction features. Optional reference labels are excluded from model input.</span></div>""",
+        unsafe_allow_html=True,
+    )
     if st.button("Run detection", disabled=upload is None, type="primary", width="stretch"):
         run_detection(upload)
     st.markdown('<div class="sidebar-rule"></div>', unsafe_allow_html=True)
@@ -966,7 +1237,7 @@ with st.sidebar:
 if "prediction_result" not in st.session_state:
     st.markdown(
         """<div class="topbar compact"><div><h1>Sentinel Command</h1>
-        <p>Upload-based intrusion detection and transparent simulated response.</p></div>
+        <p>AI-Driven IDS/IPS · upload-based detection and transparent simulated response.</p></div>
         <div class="mode-badge"><span></span> LOCAL DEMO</div></div>""",
         unsafe_allow_html=True,
     )
@@ -976,7 +1247,7 @@ else:
     rows = pd.DataFrame(result["results"])
     st.markdown(
         f"""<div class="topbar compact"><div><h1>Sentinel Command</h1>
-        <p>{escape(st.session_state.result_filename)} · {result['summary']['total']:,} records · Random Forest</p></div>
+        <p>AI-Driven IDS/IPS · {escape(st.session_state.result_filename)} · {result['summary']['total']:,} records · Random Forest</p></div>
         <div class="header-status"><span class="ready">Backend ready</span><span>Simulation only</span></div></div>""",
         unsafe_allow_html=True,
     )
