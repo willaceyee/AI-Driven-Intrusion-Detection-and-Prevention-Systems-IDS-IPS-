@@ -12,8 +12,8 @@ def apply_soc_theme():
         .stApp { background:#07111d; color:var(--ink); }
         [data-testid="stSidebar"] { background:#091522; border-right:1px solid var(--line); min-width:260px; }
         [data-testid="stSidebar"]>div { padding-top:1rem; }
-        [data-testid="stHeader"] { background:rgba(7,17,29,.92); border-bottom:1px solid rgba(36,56,76,.45); }
-        .block-container { max-width:1680px; padding:1rem 1.35rem 3rem; }
+        [data-testid="stHeader"] { height:2.75rem; background:transparent; border-bottom:0; }
+        .block-container { max-width:1680px; padding:.45rem 1.35rem 3rem; }
         h1,h2,h3,h4 { letter-spacing:-.025em; color:var(--ink); }
         h4 { font-size:1rem; }
         p,label,[data-testid="stCaptionContainer"] { color:var(--muted); }
@@ -33,7 +33,7 @@ def apply_soc_theme():
         .sidebar-readiness span { width:7px; height:7px; flex:0 0 7px; border-radius:50%; background:#38d68f; margin-right:.55rem; }
         .sidebar-readiness .readiness-caution span { background:var(--amber); }
         [data-testid="stSidebar"] [role="radiogroup"] { gap:.22rem; }
-        [data-testid="stSidebar"] [role="radiogroup"] label { min-height:42px; padding:.48rem .6rem; border:1px solid transparent; border-radius:8px; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
+        [data-testid="stSidebar"] [role="radiogroup"] label { min-height:44px; padding:.48rem .6rem; border:1px solid transparent; border-radius:8px; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
         [data-testid="stSidebar"] [role="radiogroup"] label:hover { background:#102437; border-color:#294157; transform:translateX(2px); }
         [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) { background:#123c42; border-color:#216461; }
         [data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) p { color:#f2fbf8; font-weight:700; }
@@ -98,19 +98,27 @@ def apply_soc_theme():
         .scenario-fact small { color:#657a91; font-size:.7rem; }
         .scenario-steps { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--line); }
         .scenario-steps>div { display:flex; gap:.6rem; align-items:center; padding:.75rem; background:#0d1a29; }
+        .scenario-steps>div.scenario-step-active { background:#123c42; box-shadow:inset 0 -2px 0 var(--teal); }
         .scenario-steps b { color:var(--teal); font-family:monospace; font-size:.68rem; }
         .scenario-steps span { color:#9aacbf; font-size:.73rem; }
+        .scenario-legend { display:flex; flex-wrap:wrap; gap:.55rem 1rem; margin:.45rem 0 .2rem; color:#9fb0c2; font-size:.7rem; }
+        .scenario-legend span { display:inline-flex; align-items:center; gap:.38rem; }
+        .scenario-legend i { width:9px; height:9px; border-radius:50%; background:#ff5b73; }
+        .scenario-legend .legend-destination { background:#35d7c1; }
+        .scenario-legend .legend-route { width:18px; height:2px; border-radius:0; background:#4b718e; }
+        .scenario-legend .legend-selected { width:18px; height:3px; border-radius:0; background:#ff5b73; }
         .evidence-note { margin:.7rem 0; padding:.75rem .9rem; border-left:2px solid var(--teal); background:#0d202c; color:#9fb0c2; font-size:.75rem; }
         .evidence-note strong { color:#e8f0f8; }
         .decision-lab span { color:var(--amber); font-size:.58rem; font-weight:800; letter-spacing:.12em; }
         .decision-lab strong { color:#dce5ed; font-size:.88rem; }
         .decision-lab p { color:#8497ac; font-size:.73rem; line-height:1.48; margin:0; }
         .decision-lab { display:grid; grid-template-columns:1fr auto 1fr; gap:.8rem; align-items:stretch; margin:.7rem 0; }
+        .decision-lab.three-step { grid-template-columns:1fr auto 1fr auto 1fr; }
         .decision-lab>div:not(.decision-arrow) { display:flex; flex-direction:column; gap:.3rem; padding:.85rem; border:1px solid var(--line); border-radius:9px; background:#0d1a29; }
         .decision-lab .decision-arrow { display:flex; align-items:center; color:var(--teal); font-size:1.2rem; }
         [data-testid="stDataFrame"] { border:1px solid var(--line); border-radius:8px; overflow:hidden; }
         [data-testid="stDataFrame"] * { font-size:.73rem; }
-        .stButton>button,.stDownloadButton>button { min-height:38px; border-radius:7px; font-size:.75rem; font-weight:700; border-color:#38536c; transition:transform .15s ease,border-color .15s ease,background .15s ease; }
+        .stButton>button,.stDownloadButton>button { min-height:44px; border-radius:7px; font-size:.75rem; font-weight:700; border-color:#38536c; transition:transform .15s ease,border-color .15s ease,background .15s ease; }
         .stButton>button:hover,.stDownloadButton>button:hover { transform:translateY(-1px); border-color:var(--teal); color:#dffbf4; }
         .stButton>button:focus-visible,.stDownloadButton>button:focus-visible,a:focus-visible,[role="radiogroup"] label:has(input:focus-visible) { outline:2px solid var(--teal)!important; outline-offset:2px!important; box-shadow:none!important; }
         .stButton>button[kind="primary"] { background:linear-gradient(90deg,#20b7a4,#3adbc5); color:#04120f; border:0; }
@@ -141,7 +149,7 @@ def apply_soc_theme():
           .section-head h2 { font-size:1.45rem; }
           .section-head p { font-size:.82rem; line-height:1.5; }
           [data-testid="stSidebar"] [role="radiogroup"] label,.stButton>button,.stDownloadButton>button { min-height:44px; }
-          .workflow,.scenario-steps,.decision-lab { grid-template-columns:1fr; }
+          .workflow,.scenario-steps,.decision-lab,.decision-lab.three-step { grid-template-columns:1fr; }
           .decision-lab .decision-arrow { justify-content:center; transform:rotate(90deg); }
           .analyst-callout { grid-template-columns:1fr; gap:.35rem; }
           .prevention-summary { grid-template-columns:1fr 1fr; }
@@ -155,8 +163,8 @@ def apply_soc_theme():
 
 def render_brand():
     st.markdown(
-        """<div class="soc-brand"><div class="soc-mark">⬡</div><div><div class="soc-name">SENTINEL</div>
-        <div class="soc-sub">IDS / IPS LAB</div></div></div>""",
+        """<div class="soc-brand"><div class="soc-mark">⬡</div><div><div class="soc-name">SENTINEL COMMAND</div>
+        <div class="soc-sub">AI-DRIVEN IDS / IPS</div></div></div>""",
         unsafe_allow_html=True,
     )
 
