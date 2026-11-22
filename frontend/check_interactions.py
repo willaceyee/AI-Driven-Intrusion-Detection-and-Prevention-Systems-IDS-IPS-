@@ -1,6 +1,7 @@
 """Regression checks for navigation, record identity, replay boundaries and scenario controls."""
 
 from io import BytesIO
+import re
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -94,6 +95,13 @@ def check():
     assert "document.contains(globe)" in card and "setInterval" not in card
     assert "(() =>" in card
     assert "length > 0" in card and "__sentinelRedraw" in card  # Hidden-route and reduced-motion redraw guards.
+    # Card stays in normal flow (no clipping) and its CSS is scoped to the component root.
+    style = re.sub(r"/\*.*?\*/", "", card.split("<style>")[1].split("</style>")[0], flags=re.S)
+    assert "position:absolute; left:180px" not in style and "padding:35px 25px 24px 180px" in style
+    rules = [rule.split("{")[0].strip() for rule in style.split("}") if "{" in rule and "@media" not in rule]
+    assert all(rule.startswith("#scenario-card-root") for rule in rules if rule), rules
+    # Reduced motion starts on a still frame with an explicit, user-initiated Play control.
+    assert 'id="motion-toggle"' in card and "aria-pressed" in card and "__sentinelSetPlaying" in card
     print("Navigation, exact record handoff, replay boundaries and synthetic scenario controls passed.")
 
 
