@@ -121,14 +121,36 @@ def apply_soc_theme():
         .stButton>button,.stDownloadButton>button { min-height:44px; border-radius:7px; font-size:.75rem; font-weight:700; border-color:#38536c; transition:transform .15s ease,border-color .15s ease,background .15s ease; }
         .stButton>button:hover,.stDownloadButton>button:hover { transform:translateY(-1px); border-color:var(--teal); color:#dffbf4; }
         .stButton>button:focus-visible,.stDownloadButton>button:focus-visible,a:focus-visible,[role="radiogroup"] label:has(input:focus-visible) { outline:2px solid var(--teal)!important; outline-offset:2px!important; box-shadow:none!important; }
-        .stButton>button[kind="primary"] { background:linear-gradient(90deg,#20b7a4,#3adbc5); color:#04120f; border:0; }
-        .stButton>button[kind="primary"] p,.stButton>button[kind="primary"]:hover p { color:#04120f!important; font-weight:800; }
-        .stButton>button:disabled { opacity:.58; transform:none; }
-        .stButton>button[kind="primary"]:disabled { opacity:1; background:#163f43; border:1px solid #28575b; }
-        .stButton>button[kind="primary"]:disabled p { color:#a9c5c7!important; }
-        [data-testid="stVegaLiteChart"],[data-testid="stPlotlyChart"] { background:transparent; border-radius:8px; overflow:hidden; }
-        [data-testid="stFileUploader"] { border-radius:8px; }
-        [data-testid="stAlert"] { border-radius:8px; }
+        .stButton>button[kind="primary"] {
+    background:linear-gradient(90deg,#0b5963,#0f746d);
+    color:#FFFFFF!important;
+    border:1px solid #2c8989;
+}
+.stButton>button[kind="primary"] p,
+.stButton>button[kind="primary"]:hover p,
+.stButton>button[kind="primary"]:disabled p {
+    color:#FFFFFF!important;
+    font-weight:800;
+}
+.stButton>button:disabled { opacity:.58; transform:none; }
+.stButton>button[kind="primary"]:disabled {
+    opacity:1;
+    background:#163f43;
+    border:1px solid #28575b;
+    cursor:not-allowed;
+}
+
+[data-testid="stSidebar"] .stButton > button[kind="primary"],
+[data-testid="stSidebar"] .stButton > button[kind="primary"] p,
+[data-testid="stSidebar"] .stButton > button[kind="primary"] span,
+[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover,
+[data-testid="stSidebar"] .stButton > button[kind="primary"]:hover p,
+[data-testid="stSidebar"] .stButton > button[kind="primary"]:disabled p {
+    color: #FFFFFF !important;
+}
+[data-testid="stVegaLiteChart"],[data-testid="stPlotlyChart"] { background:transparent; border-radius:8px; overflow:hidden; }
+[data-testid="stFileUploader"] { border-radius:8px; }
+[data-testid="stAlert"] { border-radius:8px; }
         @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto!important; transition:none!important; animation:none!important; } }
         @media (max-width:800px) {
           body:has([data-testid="stExpandSidebarButton"][aria-expanded="false"]) [data-testid="stSidebar"] { transform:translateX(-100%)!important; }
