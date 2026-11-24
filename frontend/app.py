@@ -754,6 +754,33 @@ def render_scenario_globe():
             format_func=lambda value: f"{value}. {scenario.steps[value - 1]}",
         )
     stage_index = stage_number - 1
+    stage_explanations = {
+        "credential-spray": (
+            "A simulated burst of repeated sign-in attempts begins the exercise.",
+            "A fictional monitoring rule flags the suspicious authentication pattern.",
+            "The tabletop response challenges an account; no real account is changed.",
+            "An analyst reviews the simulated event and its response.",
+        ),
+        "service-probe": (
+            "Fictional connection attempts probe an exposed service.",
+            "A simulated monitoring threshold flags the probing pattern.",
+            "The tabletop response isolates a session; no real connection is blocked.",
+            "The fictional case is retained for analyst review.",
+        ),
+        "data-egress": (
+            "The exercise depicts an unusual rise in transfer volume.",
+            "A simulated policy alert flags the transfer pattern for review.",
+            "The tabletop response pauses a connection; no network session is changed.",
+            "Fictional evidence is exported for follow-up.",
+        ),
+    }
+    st.markdown(
+        f"""<div class="evidence-note" role="status" aria-live="polite">
+        <strong>Selected stage {stage_number} of {len(scenario.steps)}: {escape(scenario.steps[stage_index])}</strong>
+        <div>{escape(stage_explanations[scenario.scenario_id][stage_index])}</div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
     st.markdown(
         """<div class="scenario-legend" aria-label="Scenario globe legend">
         <span><i class="legend-origin"></i>Origin and moving signal</span>
